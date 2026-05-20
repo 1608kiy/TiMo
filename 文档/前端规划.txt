@@ -1,0 +1,241 @@
+# 前端整体架构与开发规划文档
+
+基于毕业设计完整方案，本文档详细规划前端各模块的设计、组件树、数据流、交互逻辑与开发优先级，可直接作为前端编码蓝图。
+
+---
+
+## 一、项目结构与技术栈
+
+```
+src/
+├── api/                     # 接口层（按模块划分）
+├── assets/                  # 静态资源（TiMo 各状态 SVG、全局样式）
+├── components/              # 组件
+│   ├── layout/              # MainLayout, Navbar
+│   ├── agent/               # TiMoFAB, TiMoDialog, TiMoAvatar, TiMoMsgBubble
+│   ├── study/               # 学习相关卡片组件（FillBlank, Synonym, Spelling, Polysemy 等）
+│   ├── review/              # 复习三步检测子组件（QuickJudge, ContextChoice, OrthographicJudge, ExtraSpell）
+│   ├── deep/                # 深度学习五步子组件（WordCard, MeaningChoice, MatchFill, PassageFill, WordComplete）
+│   ├── onboarding/          # OnboardingOverlay
+│   └── common/              # Loading, Empty, Error
+├── composables/             # useTimer, useSpeech, useKeyboard, useDraggable, useExamPlan
+├── events/                  # mitt 事件总线
+├── router/                  # 路由配置
+├── stores/                  # Pinia 状态管理（user, agent, study, examPlan）
+├── views/                   # 页面
+│   ├── Login.vue
+│   ├── Dashboard.vue
+│   ├── WordSelect.vue       # 选词入口
+│   ├── QuickMemory.vue      # 快速记忆模式
+│   ├── DeepLearning.vue     # 语境深度学习模式
+│   ├── ReviewMode.vue       # 统一复习模式
+│   ├── Wordbank.vue
+│   ├── Stats.vue
+│   ├── Profile.vue
+│   └── Calendar.vue
+└── App.vue
+```
+
+**技术栈**：Vue3 + Vite + Element Plus ^2.8.0 + ECharts + vue-echarts + echarts-wordcloud@2.x + Axios + Pinia + mitt + dayjs + lodash-es + SCSS。桌面优先，基准宽度1440px，断点1024px。语音使用浏览器 SpeechSynthesis API。TiMo 动画纯 CSS + Lottie 可选。
+
+---
+
+## 二、路由设计
+
+| 路径 | 页面组件 | meta.title | needAuth | 说明 |
+|------|----------|------------|----------|------|
+| `/login` | `Login.vue` | 登录 | false | 登录/注册，含备考规划对话 |
+| `/` | `Dashboard.vue` | 今日规划 | true | 首页，Agent 推荐与模式选择 |
+| `/word-select` | `WordSelect.vue` | 选词学习 | true | 选词入口，分流至不同模式 |
+| `/quick-memory` | `QuickMemory.vue` | 快速记忆 | true | 墨墨式快速记忆模式 |
+| `/deep-learning` | `DeepLearning.vue` | 语境深度学习 | true | 五步深度学习模式 |
+| `/review` | `ReviewMode.vue` | 统一复习 | true | 三步检测+追加拼写 |
+| `/wordbank` | `Wordbank.vue` | 词库 | true | 浏览、搜索、单词详情 |
+| `/stats` | `Stats.vue` | 统计 | true | 数据看板（含遗忘曲线折叠区） |
+| `/profile` | `Profile.vue` | 个人中心 | true | 偏好设置、TiMo 助手设置 |
+| `/calendar` | `Calendar.vue` | 学习日历 | true | 打卡视图 |
+
+遗忘曲线对比作为 `Stats.vue` 内部 `el-collapse` 面板，无独立路由。
+
+**路由守卫**：`beforeEach` 检查 `needAuth`，无 token 跳转 `/login`；已登录访问 `/login` 自动跳 `/`。
+
+---
+
+## 三、全局状态管理（Pinia Stores）
+
+### 3.1 userStore
+- `userInfo`：用户信息、偏好设置、备考目标
+- `token`：JWT
+- `examPlan`：备考计划数据（考试类型、周期、每日新词量等）
+
+### 3.2 agentStore
+- `isOpen`：对话浮层显隐
+- `tiMoState`：`idle | thinking | alert | success | offline`
+- `apiStatus`：`online | offline`
+- `messages`：消息列表（上限100条）
+- `conversationType`：当前对话类型（general / exam_planning / word_query / diagnosis）
+- `entrySource`：入口来源
+- `addMessage`, `setApiStatus`, `setTiMoState`, `toggleDialog`
+
+### 3.3 studyStore
+- `sessionQueue`：当前学习会话的单词队列（混合了快速记忆或深度学习的新词、复习词）
+- `progress`：完成数、正确率、耗时
+- `sessionStats`：本次学习统计数据
+- `fatigueTimer`：疲劳检测相关
+
+### 3.4 examPlanStore
+- 备考规划对话状态机，存储用户对话中设置的考试目标、成绩、学习节奏、周期等，最终生成计划参数。
+
+---
+
+## 四、全局布局与 TiMo 组件
+
+### 4.1 MainLayout.vue
+- 顶部 `Navbar` 导航栏：左侧 Logo，中间菜单（今日规划、选词学习、复习待办、词库、统计、个人中心），右侧用户下拉。
+- 主内容区 `<router-view>` 使用 `<keep-alive>` 缓存页面（Wordbank, Stats, Profile, Calendar）。
+- 右下角固定 `TiMoFAB` 悬浮按钮（64px圆形，光环呼吸动画）。
+- `TiMoDialog` 浮层，由 `agentStore.isOpen` 控制显示。
+
+### 4.2 TiMoAvatar.vue
+- Props: `state` (idle/thinking/alert/success/offline), `size`
+- 根据状态切换 SVG 图片，光环用 CSS `box-shadow` 和动画控制。
+
+### 4.3 TiMoFAB.vue
+- 点击切换对话，有未读消息数量角标。
+- 光环动画：待机缓慢呼吸，思考快速旋转，警示脉冲，离线灰色静止。
+
+### 4.4 TiMoDialog.vue
+- 固定浮层，宽 480px，响应式缩小。
+- 头部：TiMo 头像 + 名字 + 在线状态点 + 最小化/关闭。
+- 消息列表：自动滚底，支持文本、卡片、快捷回复气泡。
+- 输入框 + 发送按钮，快捷操作按钮。
+- 新消息到达时滚动到底部。
+
+### 4.5 TiMoMsgBubble.vue
+- 支持 `text`, `card`, `action`, `quick_reply` 四种类型。
+- 用户消息右对齐，天蓝底；Agent 消息左对齐，浅底边框；快捷选项按钮组。
+
+---
+
+## 五、页面详细设计
+
+### 5.1 登录/注册页 (Login.vue)
+- 左右分栏：左侧品牌区（TiMo 大图 + 标语），右侧表单。
+- 登录模式：邮箱 + 密码。
+- 注册模式：三步流程（账号密码 → 难度自评 + 词库选择 → 完成）。前测弹窗可选，无倒计时，5题即时出结果。
+- 注册成功自动登录，跳转首页并触发备考规划对话（exam_planning 类型）。
+
+### 5.2 首次引导 (OnboardingOverlay.vue)
+- 首次登录时，Dashboard 顶部检测 `localStorage` 标记，若未引导则显示。
+- 使用 `<el-tour>` 或自定义蒙层，步骤：高亮导航“今日规划” → 高亮意图输入区 → 高亮 TiMo 悬浮按钮。
+- 完成后写入标记，跳过自动不再显示。
+
+### 5.3 今日规划页 (Dashboard.vue)
+- TiMo 每日问候语 + 日期。
+- 四格数据快照卡片：掌握单词数、待复习到期数、近7天正确率、连续打卡天数。
+- **Agent 推荐区**：展示今日推荐词单（基于备考计划与 FSRS），包含新词数、复习词数，推荐学习模式。推荐卡片上有“一键采纳”按钮，点击跳转选词页并预填。
+- 手动调整区：滑块调整新词量和复习量，防抖 300ms 请求后端重新估算时间。
+- 遗忘唤醒区：展示即将遗忘的 Top5 单词，可点击“听 TiMo 建议”打开对话中心。
+- “开始学习”按钮，点击后弹出学习模式选择对话框（快速记忆 / 语境深度学习 / 仅复习）。
+
+### 5.4 选词入口页 (WordSelect.vue)
+- 左侧筛选面板：词书、熟悉度、搜索框；批量选择按钮（仅选未掌握、全选等）。
+- 中间单词列表（勾选框），右侧已选清单显示单词及数量。
+- 底部模式切换：快速记忆（约15秒/词）或语境深度学习（约3分钟/组，可设置每组词数）。
+- TiMo 推荐卡片：若有 Agent 推荐，可一键采纳推荐词单填入已选清单。
+- “开始学习”按钮，根据所选模式跳转至 `QuickMemory` 或 `DeepLearning`，并传入已选单词列表。
+
+### 5.5 快速记忆模式页 (QuickMemory.vue)
+- **组件树**：
+  - `QuickProgressBar`：进度显示
+  - `WordCard`：展示单词卡片（无中文释义），两个按钮【认识】【不认识】
+  - `VerifyPopup`：闪电验证弹窗（二选一释义，3秒倒计时）
+  - `WordDetailSheet`：不认识时展开的释义、例句、助记
+  - `SessionSummary`：结束弹窗（正确率、易错词）
+- **交互流程**：
+  1. 展示单词，用户点击“认识”或“不认识”。
+  2. 认识 → 弹出闪电验证（反应时记录），正确则绿色对勾，错误显示正确答案并标记。
+  3. 不认识 → 展开详情，阅读后点击“下一个”。
+  4. 所有单词过完后，对整个 session 中错误（grade≤2）的单词追加一轮验证。
+  5. session 结束，展示小结。所有数据提交后端，更新 FSRS。
+- 键盘操作：Enter 或空格可快捷选择。
+- 疲劳检测：累计学习时间超过20分钟，底部 snackbar 提示休息。
+
+### 5.6 语境深度学习模式页 (DeepLearning.vue)
+- **分组与前置复习**：开启“先复习”选项时，先进入复习模式三步检测，完成后自动进入新词学习。
+- **五步递进组件**：
+  - `Step1WordCard`：展示单词、音标、释义、真题例句、助记，停留时长记录。停留不足3秒标记跳过。
+  - `Step2MeaningChoice`：展示例句（目标词标绿），四选一释义。
+  - `Step3MatchFill`：整组单词-释义拖拽匹配（或下拉选择）。
+  - `Step4PassageFill`：Agent 生成包含全组单词的短文，从单词池中选择填入空格。
+  - `Step5WordComplete`：看中文释义和首字母提示，补全单词。渐进式提示（首字母→更多字母→显示答案）。
+- **一组完成**：弹窗展示该组正确率、薄弱词，可选择重新学习错词或进入下一组。
+- **全部完成**：总小结，提交 group_results 给后端计算综合 grade_final。
+
+### 5.7 统一复习模式页 (ReviewMode.vue)
+- **页面结构**：
+  - `ReviewProgress`：显示待复习词数和当前进度。
+  - `QuickJudgeCard`：闪电判断（步骤1），二选一释义，3秒计时。
+  - `ContextChoiceCard`：语境选义（步骤2），四选一，5秒。
+  - `OrthographicJudgeCard`：词形辨析（步骤3），看中文选正确拼写，5秒。
+  - `ExtraSpellCard`：追加拼写环节，仅对表现不佳或顽固词触发。
+  - `SessionSummary`：统计三步检测各正确率，展示顽固词处理结果。
+- **分层触发**：
+  - 普通词直接三步检测，若 `grade_review < 2.5` 追加拼写。
+  - 顽固词自动追加拼写环节。
+- 完成全部后提交 quiz_records，更新 FSRS。
+
+### 5.8 词库管理页 (Wordbank.vue)
+- 左侧筛选面板（词书、熟悉度、词性等），右侧单词列表（表格或卡片）。
+- 单词详情抽屉 (el-drawer)：释义、例句、FSRS状态迷你图表、历史记录、操作按钮（收藏、询问 TiMo）。
+- 筛选状态全部使用组件内 ref，不存 store。
+
+### 5.9 统计仪表盘 (Stats.vue)
+- 顶部指标卡：累计天数、总词量、掌握数、平均正确率。
+- 记忆保持率环形图。
+- 日历热力图 (ECharts heatmap)。
+- 每日复习量堆叠柱状图。
+- 反应时长箱形图。
+- 薄弱词标签云 (echarts-wordcloud)。
+- 遗忘曲线对比折叠区。
+- Agent 决策日志时间线。
+
+### 5.10 学习日历 (Calendar.vue)
+- `el-calendar`，`first-day-of-week="1"` (周一)。
+- 日期格子内展示学习标记（小圆点），连续打卡用连线强调。
+- 点击日期弹出当日学习摘要。
+- 切换月份时重新请求数据。
+
+### 5.11 个人中心 (Profile.vue)
+- 左侧用户信息卡（头像、用户名、备考目标）。
+- 右侧设置面板：每日新词上限、默认模式、难度偏好、智能出题开关、TiMo 提醒、疲劳敏感度等。
+- 危险区（退出登录、注销账户）需二次确认。
+
+---
+
+## 六、全局交互与数据流
+
+1. **API 请求**：统一 Axios 实例，JWT 拦截器，响应拦截器处理 401 与熔断（连续失败3次通过 mitt 事件通知 agentStore 进入离线状态）。
+2. **离线与失效**：前端检测网络状态，离线时暂停依赖于后端计算的操作，显示提示。TiMo 对话框状态灯变灰，输入框禁用。
+3. **数据统计**：所有学习记录经组件内部处理后调用 API 提交，store 只做临时状态，不长期保存复杂数据。
+4. **模式切换**：Agent 对话框内支持快捷指令，可快速跳转学习模式，同时传递预选词列表。
+
+---
+
+## 七、开发计划（14.5工作日）
+
+| 阶段 | 天数 | 内容 |
+|------|------|------|
+| 基础框架与布局 | 1.5天 | 项目初始化，MainLayout, Navbar, TiMoFAB/Dialog/Avatar |
+| 认证与引导 | 1天 | Login, Onboarding |
+| 今日规划与选词入口 | 1天 | Dashboard, WordSelect |
+| 快速记忆模式 | 2天 | QuickMemory 及相关子组件 |
+| 语境深度学习模式 | 3天 | 五步组件、分组控制、短文生成接口 |
+| 统一复习模式 | 2天 | 三步检测、追加拼写、分层逻辑 |
+| 辅助页面 | 2天 | Wordbank, Calendar, Profile |
+| 统计仪表盘 | 2天 | ECharts 图表集成 |
+| 联调与测试 | 1.5天 | API 联调，异常处理，响应式调整 |
+
+**总计** 约 14.5 天。
+
+这份前端规划与系统设计方案严格保持一致，涵盖所有页面细节与交互流程，可作为毕业设计前端开发的直接依据。

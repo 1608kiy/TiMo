@@ -1,0 +1,65 @@
+我们回到最精简、可实现的状态。
+
+TiMo 只保留 5 个基础形象，通过右下角悬浮按钮和对话中心两个位置，驱动全局所有状态的视觉反馈。以下是具体落地细节。
+
+---
+
+### 1. 视觉素材清单 (你只需要这5个)
+
+| 状态标识 | 必须素材 | 光环动画 (CSS实现) |
+|:---|:---|:---|
+| `idle` | TiMo 侧坐，安静状态的 SVG/PNG | 光环缓慢呼吸 (3s周期) |
+| `thinking` | TiMo 歪头，托下巴的 SVG/PNG | 光环快速旋转 (0.8s周期) |
+| `alert` | TiMo 举右爪的 SVG/PNG | 光环脉冲高亮 (1.5s周期, 亮度80%) |
+| `success` | TiMo 跳跃，双爪高举的 SVG/PNG | 光环炸开光点粒子 |
+| `offline` | TiMo 蜷缩成团的 SVG/PNG (灰色滤镜) | 光环灰色静止 |
+
+**TiMo 基础形象提示词 (用于生成这5张图)**
+
+```
+A cute black kitten with elliptical amber eyes and a small pink nose, soft fur, curled tail. A glowing light blue halo surrounds its body. Flat vector illustration, clean lines, simple design, suitable for app icon. White background. --ar 1:1
+```
+*   **Idle (待机)**: `...sitting quietly, tail wrapped around paws, eyes half-closed, gentle smile. The halo is breathing softly.`
+*   **Thinking (思考)**: `...tilting its head to the left, one paw touching its chin, eyes looking upward curiously. The halo is rotating with motion lines.`
+*   **Alert (提醒)**: `...raising its right paw like giving a warning, eyes wide open, slightly urgent expression. The halo is pulsing brighter and faster.`
+*   **Success (成功)**: `...jumping up happily, both paws raised high, joyful expression with closed happy eyes. The halo is sparkling with small star-shaped light particles around it.`
+*   **Offline (离线)**: `...sitting with droopy ears and sleepy eyes, curled up in a ball. The halo around it is grey and static, not glowing.`
+
+
+### 2. 全局触发器映射表
+
+切换 `tiMoStore.tiMoState` 的值，就能驱动全局 TiMo 形象变化。
+
+| 触发事件 | 触发时机 | TiMo 状态变化 |
+|:---|:---|:---|
+| `api:call-start` | 调用后端 Agent 接口时 | `idle` -> `thinking` |
+| `api:call-success` | Agent 接口返回结果时 | `thinking` -> `idle` |
+| `api:meltdown` | 30秒内接口连续失败3次 | `thinking`/`idle` -> `offline` |
+| `study:correct` | 用户答对一道题 | `idle` -> `success` (持续1.5s) -> `idle` |
+| `study:wrong` | 用户答错一道题 | 光环快速闪烁红色 (持续0.5s) |
+| `study:fatigue` | 连续学习超20分钟 | `idle` -> `alert` (持续3-5s) -> `idle` |
+| `alert:forgetting` | 触发遗忘预警 | `idle` -> `alert` (持续至用户查看) -> `idle` |
+| `calendar:checkin` | 完成当日打卡 | `idle` -> `success` (持续2s) -> `idle` |
+
+---
+
+### 3. 前端开发落地清单
+
+*   **Pinia Store (`tiMoStore.js`)**
+    *   `tiMoState` (ref): `'idle' | 'thinking' | 'alert' | 'success' | 'offline'`
+    *   `setTiMoState(state, duration?)`: 切换状态，可选的自动恢复时长。
+
+*   **TiMo 组件改造**
+    *   `TiMoAvatar.vue`: 接收 `state` prop，根据 `idle, thinking, alert, success, offline` 自动切换对应的 SVG 图片，并应用对应的 CSS 光环动画。
+    *   `TiMoFAB.vue`:
+        *   悬浮按钮内嵌 `TiMoAvatar`，状态从 `tiMoStore` 读取。
+        *   添加一个过渡动画：在状态切换时，小猫有一个轻微的缩放(scale bounce)效果。
+
+*   **全局事件绑定**
+    *   在 `App.vue` 的 `onMounted` 里，通过 `mitt` 事件总线订阅 `api:call-start`, `study:correct` 等事件，回调中调用 `tiMoStore.setTiMoState()`。
+    *   在 `request.js` (Axios拦截器) 中，请求拦截器 `emit('api:call-start')`，成功响应 `emit('api:call-success')`，连续失败 `emit('api:meltdown')`。
+    *   在 `QuickMemory.vue` 和 `ReviewMode.vue` 等答题页面，用户提交答案后，根据返回结果 `emit('study:correct')` 或 `emit('study:wrong')`。
+
+---
+
+这样，你的 TiMo 形象系统就只有核心的 5 种状态和一套干净的全局事件逻辑。开发量很小，但能完美覆盖你的毕设演示场景。

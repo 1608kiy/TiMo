@@ -1,0 +1,523 @@
+# 后端整体架构与开发规划文档
+
+基于《基于 AI Agent 与 FSRS 的自适应语境化背单词系统》最终版方案，本文档详细规划后端系统的技术架构、模块划分、数据库设计、API 接口列表、核心算法实现要点以及开发排期，可直接作为后端开发的执行蓝图。
+
+---
+
+## 一、技术选型与基础环境
+
+| 层级 | 技术栈 | 说明 |
+|------|--------|------|
+| **基础框架** | Spring Boot 2.7+ / 3.x | 快速构建、自动配置 |
+| **Web 层** | Spring MVC | RESTful API |
+| **持久层** | Spring Data JPA + MyBatis | JPA 负责基础 CRUD，MyBatis 处理复杂查询与统计 |
+| **数据库** | MySQL 8.0 | 主库，存储所有结构化数据 |
+| **缓存** | Redis | 缓存热点数据、学习状态、题目预生成队列、分布式锁（可选） |
+| **安全** | Spring Security + JWT | 无状态认证 |
+| **API 文档** | Knife4j (Swagger) | 开发期间自动生成接口文档 |
+| **AI 调用** | RestTemplate | 调用 DeepSeek API（启用 JSON mode） |
+| **工具库** | Lombok, Hutool, Jackson | 简化开发 |
+| **测试** | JUnit5, Mockito | 单元测试、集成测试 |
+
+项目包结构：
+```
+com.timo.words
+├── common          // 全局异常处理、统一响应体、常量
+├── config          // Security、Redis、跨域等配置
+├── modules
+│   ├── auth        // 认证模块（登录、注册、JWT）
+│   ├── user        // 用户管理、偏好设置
+│   ├── word        // 词库管理（单词、释义、考点、词根词缀）
+│   ├── study       // 学习记录（quiz_records）、学习计划（study_plans）
+│   ├── examplan    // 备考规划（对话状态、计划生成）
+│   ├── review      // 复习管理（复习队列、顽固词）
+│   ├── agent       // AI Agent 交互（对话、出题、周报、推荐）
+│   ├── statistics  // 统计报表（仪表盘数据）
+│   └── calendar    // 学习日历、打卡管理
+├── algorithm
+│   ├── fsrs        // FSRS 核心算法实现
+│   ├── df          // 动态遗忘因子（各 λ 计算）
+│   └── scoring     // 多模式评分映射
+└── infrastructure
+    ├── ai          // DeepSeek 客户端封装、熔断降级
+    └── event       // 事件发布（与前端 mitt 对应，用于异步通知）
+```
+
+---
+
+## 二、核心业务模块划分与职责
+
+### 2.1 认证与用户模块 (auth / user)
+- 注册：接收邮箱、密码、备考自评等级、词库偏好，创建用户并初始化 FSRS 参数。
+- 登录：验证凭证，返回 JWT。
+- 用户偏好：保存难度偏好、每日新词上限、学习模式默认设置等。
+- 备考规划：存储用户对话生成的备考计划（考试类型、周期、学习节奏等），支持后续调整。
+
+### 2.2 词库模块 (word)
+- 单词 CRUD：管理词表、释义、音标、例句。
+- 词根词缀、同根词族：用于展示单词分析。
+- 真题考点：存储历年真题对单词的考查方式，用于深度学习步骤 1 展示。
+- 熟悉度标签：基于 `user_word_bind` 计算，由 FSRS 的 R 值、review_count 等决定。
+
+### 2.3 学习模块 (study)
+- **学习计划生成** (`study_plans`)：根据 Agent 推荐或用户手动设定，生成每日学习计划（复习词数、新词数、预计耗时）。
+- **答题记录** (`quiz_records`)：接收前端提交的各类学习记录，包括：
+  - 快速记忆模式：认识/不认识、闪电验证结果、反应时。
+  - 语境深度学习模式：整组 `{word_id, step_results, hint_total}`，后端计算 `composite_grade` 与 `grade_final`。
+  - 统一复习模式：三步检测各步得分、是否追加拼写等。
+- **单词记忆状态** (`user_word_bind`)：每次学习后更新 FSRS 的 S、D、R 以及 `next_review_time`。
+- **顽固词管理**：根据错误强化规则自动标记/解除顽固词。
+
+### 2.4 备考规划模块 (examplan)
+- **对话驱动**：基于上一轮对话的 `stage`，校验用户回答，推算词汇量并计算模式。
+- **计划生成算法**：输入（考试类型、已有词汇量、备考天数、学习节奏）→ 输出每日新词量、复习量、预计总耗时等。
+- **动态调整**：每周根据实际进度与正确率触发计划的微调建议，经 Agent 确认后更新。
+
+### 2.5 复习模块 (review)
+- **复习队列生成**：查询 `user_word_bind` 中 `next_review_time <= now` 的单词，区分快速复习词和深度强化词（顽固词、低 R 值词）。
+- **复习记录处理**：接收三步检测结果，计算 `grade_review`，决定是否触发追加拼写。
+- **顽固词回调**：处理顽固词解除/升级逻辑。
+
+### 2.6 AI Agent 模块 (agent)
+- **对话管理**：维护 `chat_sessions` 与 `chat_messages`，支持多模式会话（计划沟通、单词问答、学习诊断、自由对话练习）。
+- **动态出题**：接收出题请求，调用 DeepSeek 生成语境填空、短文、辨析题等，返回 JSON。
+- **推荐服务**：
+  - 今日词单推荐：综合备考进度、顽固词列表、词频等，推荐合适数量新词。
+  - 模式推荐：根据用户近期数据给出学习模式建议。
+- **周报生成**：聚合一周学习数据，调用 DeepSeek 生成自然语言周报。
+- **熔断降级**：连续 3 次 API 调用失败，自动关闭 Agent 出题与规划功能，回退至本地规则。
+
+### 2.7 统计模块 (statistics)
+- 提供仪表盘所有图表所需数据：
+  - 累计学习天数、总单词量、掌握数、正确率趋势、R 值分布等。
+  - 日历热力图数据（每日学习时长/打卡状态）。
+  - 复习量柱状图、反应时箱形图、薄弱词标签云数据。
+  - 遗忘曲线对比数据（实际 vs FSRS vs FSRS+DF）。
+
+### 2.8 日历模块 (calendar)
+- 打卡记录：每日首次学习后自动打卡，不支持补打。
+- 月度视图：返回指定月份的打卡状态、每日学习摘要。
+
+---
+
+## 三、数据库核心表设计
+
+### 3.1 用户相关
+**users**
+- `id`, `email`, `password_hash`
+- `self_assessed_level` (CET4/CET6/...), `difficulty_preference` (保守/标准/激进)
+- `exam_type`, `target_vocab`, `study_days`, `schedule_type` (备考计划字段)
+- `mu_init`, `sigma_init` (冷启动参数)
+
+**user_preferences**
+- `default_mode`, `daily_new_limit`, `reminder_enabled`, `fatigue_sensitivity`, `agent_chat_enabled`
+
+### 3.2 词库相关
+**words** (id, word, pos)
+**meanings** (id, word_id, meaning, part_of_speech)
+**examples** (id, word_id, sentence, translation, source)
+**word_exam_points** (word_id, exam_type, year, section, point_text, example_sentence)
+**word_analysis** (word_id, root_analysis, word_family)
+
+### 3.3 记忆状态与学习记录
+**user_word_bind**
+- `user_id`, `word_id`, `difficulty_initial`, `difficulty`, `stability`, `retrievability`
+- `next_review_time`, `review_count`, `is_stubborn`, `stubborn_since`, `consecutive_errors`
+
+**quiz_records**
+- `id`, `user_id`, `word_id`, `study_mode` (quick_memory, context_deep, unified_review)
+- `grade` (最终传递 FSRS 的 1.0~4.0 浮点)
+- `composite_grade`, `step_results` (JSON), `hint_total`
+- `reaction_time_ms`, `source` (static/dynamic/conversation...)
+- `created_at`
+
+**study_plans**
+- `id`, `user_id`, `date`, `review_count`, `new_word_count`, `estimated_minutes`
+- `intensity_label`, `adoption_status` (fully_accepted/modified/rejected)
+- `created_at`
+
+### 3.4 复习与顽固词
+**forgetting_alerts** (user_id, word_id, r_value, alert_date, is_reviewed)
+**stubborn_log** (user_id, word_id, mark_time, unmark_time, reason)
+
+### 3.5 Agent 对话相关
+**chat_sessions** (id, user_id, conversation_type, created_at)
+**chat_messages** (id, session_id, role, content, card_data JSON, suggested_actions JSON)
+**conversation_quiz_log** (user_id, word_id, session_id, used_correctly BOOLEAN, created_at) — 数据隔离用
+**agent_logs** (user_id, type, request_params, response, success)
+
+### 3.6 备考规划
+**exam_plans** (user_id, exam_type, target_vocab, plan_json, generated_at)
+
+所有 `*_time` 字段使用 `datetime` 类型，R 值相关使用 `double`。
+
+---
+
+## 四、API 接口列表（按模块）
+
+### 4.1 认证模块
+- `POST /api/auth/register`  注册
+- `POST /api/auth/login`  登录
+
+### 4.2 用户模块
+- `GET /api/user/profile`  获取个人信息及偏好
+- `PUT /api/user/preferences`  更新偏好
+- `PUT /api/user/exam-plan`  更新备考计划
+
+### 4.3 词库模块
+- `GET /api/words`  单词列表（分页、筛选）
+- `GET /api/words/{id}`  单词详情
+- `GET /api/words/search`  搜索
+- `GET /api/words/recommend`  Agent 推荐词单（参数：数量、模式）
+
+### 4.4 学习模块
+- `POST /api/plan/generate`  生成 / 微调今日计划
+- `POST /api/plan/confirm`  确认计划
+- `POST /api/study/submit-quick-memory`  提交快速记忆结果（单个或批量）
+- `POST /api/study/submit-context-deep-group`  提交整组语境深度学习结果
+- `POST /api/study/submit-review`  提交复习结果（包含三步检测与追加拼写）
+- `GET /api/study/next-word`  智能出题（备用，非核心）
+
+### 4.5 复习模块
+- `GET /api/review/queue`  获取今日复习队列（已分层）
+- `POST /api/review/result`  处理复习结果（同 study/submit-review）
+
+### 4.6 备考规划模块
+- `POST /api/exam-plan/start-dialog`  开始规划对话，获取首条信息
+- `POST /api/exam-plan/continue-dialog`  发送用户回答，获取下一条消息
+- `POST /api/exam-plan/generate`  根据收集信息生成最终计划
+- `GET /api/exam-plan/status`  获取当前计划进度与调整建议
+
+### 4.7 Agent 模块
+- `POST /api/agent/chat/send`  发送对话消息，返回 Agent 回复
+- `GET /api/agent/chat/history`  获取对话历史
+- `POST /api/agent/chat/new-session`  创建新会话
+- `GET /api/agent/recommend`  获取今日推荐（模式、词单）
+- `POST /api/agent/generate-questions`  请求生成特定单词的题目（短文等）
+- `GET /api/agent/weekly-report`  获取或生成周报
+
+### 4.8 统计模块
+- `GET /api/statistics/overview`  概览数据
+- `GET /api/statistics/retention`  记忆保持率趋势
+- `GET /api/statistics/forgetting-curve`  遗忘曲线对比数据
+- `GET /api/statistics/heatmap`  日历热力图数据
+- `GET /api/statistics/daily-stats`  每日学习量
+- `GET /api/statistics/reaction-time`  反应时分布
+- `GET /api/statistics/weak-words`  薄弱词云数据
+
+### 4.9 日历模块
+- `GET /api/calendar/monthly?year=&month=`  月度打卡数据
+- `POST /api/calendar/checkin`  手动打卡（实际多为自动）
+
+---
+
+## 五、核心算法实现要点
+
+### 5.1 FSRS 引擎封装
+- 实现 `Scheduler` 类，包含 `review(word, grade, studyMode)` 方法，返回更新后的 S、D、R、next_review_time。
+- 内部集成 DF 计算器 `DynamicForgettingFactor`，根据 `studyMode` 选择不同的因子组合。
+- 评分映射器 `GradeMapper`：将各类原始行为数据（快速记忆的判断结果、深度学习的步骤得分、复习的三步得分）转换为 1.0~4.0 的浮点 `grade`。
+
+### 5.2 DF 因子计算器
+- `lambda_rt(reactionTime, userMu, userSigma)`：计算反应时因子，值域 [0.7, 1.3]。
+- `lambda_acc(historyCorrectRate)`：历史正确率因子，值域 [0.7, 1.3]。
+- `lambda_skip_custom(hintTotal, reviewCount)`：提示惩罚因子，值域 [0.7, 1.3]。
+- 合成 DF，最终 clip 至 [0.5, 1.5]。
+
+### 5.3 错误强化处理器
+- 实现规则引擎，检查触发条件，执行额外的 S、D 调整及顽固词标记。
+
+### 5.4 冷启动
+- 新用户 μ=8s, σ=3s，答题次数达标后平滑切换至个人统计。
+
+---
+
+## 六、安全与性能考虑
+
+- **安全**：密码 BCrypt 加密，JWT token 有效期 7 天，刷新机制可后续实现。
+- **并发**：学习记录提交使用 Redis 分布式锁（`userId:wordId`），防止同一单词被短时间内重复更新。
+- **读写分离**：统计查询涉及大量数据，可考虑使用 MyBatis 直接查询只读副本或专门的数据仓库视图。
+- **缓存**：词库数据、Agent 生成的短文、辨析结果等缓存至 Redis，减少数据库与 API 压力。
+- **异常处理**：统一响应体 `Result`，全局异常拦截器返回友好错误信息。
+
+---
+
+## 七、开发计划（后端）
+
+| 阶段 | 天数 | 内容 |
+|------|------|------|
+| 基础环境与脚手架 | 1天 | 项目初始化、数据库建表、Security+JWT 配置、Swagger 集成 |
+| 用户与认证模块 | 1天 | 注册、登录、偏好设置 CRUD |
+| 词库模块 | 1.5天 | 词库 CRUD、推荐逻辑、真题考点等 |
+| 算法核心（FSRS+DF） | 2天 | 实现 FSRS 引擎、DF 计算器、评分映射、错误强化 |
+| 学习与复习模块 | 2天 | 学习计划生成、快速记忆/深度学习/复习记录处理、顽固词管理 |
+| 备考规划模块 | 1.5天 | 对话状态机、计划生成、调整接口 |
+| Agent 与 AI 调用 | 2天 | DeepSeek 客户端、熔断、对话管理、动态出题、周报生成 |
+| 统计与日历模块 | 1.5天 | 所有统计图表数据接口、打卡记录 |
+| 联调测试与性能优化 | 1.5天 | 与前端联调、异常场景测试、缓存优化、索引优化 |
+| **合计** | **14天** | |
+
+---
+
+本后端规划覆盖了系统所需的所有技术点与接口，与前端方案无缝对接。建议前后端同步开发，先实现认证与词库，再逐步完成学习与 AI 模块。# 后端整体架构与开发规划文档
+
+基于《基于 AI Agent 与 FSRS 的自适应语境化背单词系统》最终版方案，本文档详细规划后端系统的技术架构、模块划分、数据库设计、API 接口列表、核心算法实现要点以及开发排期，可直接作为后端开发的执行蓝图。
+
+---
+
+## 一、技术选型与基础环境
+
+| 层级 | 技术栈 | 说明 |
+|------|--------|------|
+| **基础框架** | Spring Boot 2.7+ / 3.x | 快速构建、自动配置 |
+| **Web 层** | Spring MVC | RESTful API |
+| **持久层** | Spring Data JPA + MyBatis | JPA 负责基础 CRUD，MyBatis 处理复杂查询与统计 |
+| **数据库** | MySQL 8.0 | 主库，存储所有结构化数据 |
+| **缓存** | Redis | 缓存热点数据、学习状态、题目预生成队列、分布式锁（可选） |
+| **安全** | Spring Security + JWT | 无状态认证 |
+| **API 文档** | Knife4j (Swagger) | 开发期间自动生成接口文档 |
+| **AI 调用** | RestTemplate | 调用 DeepSeek API（启用 JSON mode） |
+| **工具库** | Lombok, Hutool, Jackson | 简化开发 |
+| **测试** | JUnit5, Mockito | 单元测试、集成测试 |
+
+项目包结构：
+```
+com.timo.words
+├── common          // 全局异常处理、统一响应体、常量
+├── config          // Security、Redis、跨域等配置
+├── modules
+│   ├── auth        // 认证模块（登录、注册、JWT）
+│   ├── user        // 用户管理、偏好设置
+│   ├── word        // 词库管理（单词、释义、考点、词根词缀）
+│   ├── study       // 学习记录（quiz_records）、学习计划（study_plans）
+│   ├── examplan    // 备考规划（对话状态、计划生成）
+│   ├── review      // 复习管理（复习队列、顽固词）
+│   ├── agent       // AI Agent 交互（对话、出题、周报、推荐）
+│   ├── statistics  // 统计报表（仪表盘数据）
+│   └── calendar    // 学习日历、打卡管理
+├── algorithm
+│   ├── fsrs        // FSRS 核心算法实现
+│   ├── df          // 动态遗忘因子（各 λ 计算）
+│   └── scoring     // 多模式评分映射
+└── infrastructure
+    ├── ai          // DeepSeek 客户端封装、熔断降级
+    └── event       // 事件发布（与前端 mitt 对应，用于异步通知）
+```
+
+---
+
+## 二、核心业务模块划分与职责
+
+### 2.1 认证与用户模块 (auth / user)
+- 注册：接收邮箱、密码、备考自评等级、词库偏好，创建用户并初始化 FSRS 参数。
+- 登录：验证凭证，返回 JWT。
+- 用户偏好：保存难度偏好、每日新词上限、学习模式默认设置等。
+- 备考规划：存储用户对话生成的备考计划（考试类型、周期、学习节奏等），支持后续调整。
+
+### 2.2 词库模块 (word)
+- 单词 CRUD：管理词表、释义、音标、例句。
+- 词根词缀、同根词族：用于展示单词分析。
+- 真题考点：存储历年真题对单词的考查方式，用于深度学习步骤 1 展示。
+- 熟悉度标签：基于 `user_word_bind` 计算，由 FSRS 的 R 值、review_count 等决定。
+
+### 2.3 学习模块 (study)
+- **学习计划生成** (`study_plans`)：根据 Agent 推荐或用户手动设定，生成每日学习计划（复习词数、新词数、预计耗时）。
+- **答题记录** (`quiz_records`)：接收前端提交的各类学习记录，包括：
+  - 快速记忆模式：认识/不认识、闪电验证结果、反应时。
+  - 语境深度学习模式：整组 `{word_id, step_results, hint_total}`，后端计算 `composite_grade` 与 `grade_final`。
+  - 统一复习模式：三步检测各步得分、是否追加拼写等。
+- **单词记忆状态** (`user_word_bind`)：每次学习后更新 FSRS 的 S、D、R 以及 `next_review_time`。
+- **顽固词管理**：根据错误强化规则自动标记/解除顽固词。
+
+### 2.4 备考规划模块 (examplan)
+- **对话驱动**：基于上一轮对话的 `stage`，校验用户回答，推算词汇量并计算模式。
+- **计划生成算法**：输入（考试类型、已有词汇量、备考天数、学习节奏）→ 输出每日新词量、复习量、预计总耗时等。
+- **动态调整**：每周根据实际进度与正确率触发计划的微调建议，经 Agent 确认后更新。
+
+### 2.5 复习模块 (review)
+- **复习队列生成**：查询 `user_word_bind` 中 `next_review_time <= now` 的单词，区分快速复习词和深度强化词（顽固词、低 R 值词）。
+- **复习记录处理**：接收三步检测结果，计算 `grade_review`，决定是否触发追加拼写。
+- **顽固词回调**：处理顽固词解除/升级逻辑。
+
+### 2.6 AI Agent 模块 (agent)
+- **对话管理**：维护 `chat_sessions` 与 `chat_messages`，支持多模式会话（计划沟通、单词问答、学习诊断、自由对话练习）。
+- **动态出题**：接收出题请求，调用 DeepSeek 生成语境填空、短文、辨析题等，返回 JSON。
+- **推荐服务**：
+  - 今日词单推荐：综合备考进度、顽固词列表、词频等，推荐合适数量新词。
+  - 模式推荐：根据用户近期数据给出学习模式建议。
+- **周报生成**：聚合一周学习数据，调用 DeepSeek 生成自然语言周报。
+- **熔断降级**：连续 3 次 API 调用失败，自动关闭 Agent 出题与规划功能，回退至本地规则。
+
+### 2.7 统计模块 (statistics)
+- 提供仪表盘所有图表所需数据：
+  - 累计学习天数、总单词量、掌握数、正确率趋势、R 值分布等。
+  - 日历热力图数据（每日学习时长/打卡状态）。
+  - 复习量柱状图、反应时箱形图、薄弱词标签云数据。
+  - 遗忘曲线对比数据（实际 vs FSRS vs FSRS+DF）。
+
+### 2.8 日历模块 (calendar)
+- 打卡记录：每日首次学习后自动打卡，不支持补打。
+- 月度视图：返回指定月份的打卡状态、每日学习摘要。
+
+---
+
+## 三、数据库核心表设计
+
+### 3.1 用户相关
+**users**
+- `id`, `email`, `password_hash`
+- `self_assessed_level` (CET4/CET6/...), `difficulty_preference` (保守/标准/激进)
+- `exam_type`, `target_vocab`, `study_days`, `schedule_type` (备考计划字段)
+- `mu_init`, `sigma_init` (冷启动参数)
+
+**user_preferences**
+- `default_mode`, `daily_new_limit`, `reminder_enabled`, `fatigue_sensitivity`, `agent_chat_enabled`
+
+### 3.2 词库相关
+**words** (id, word, pos)
+**meanings** (id, word_id, meaning, part_of_speech)
+**examples** (id, word_id, sentence, translation, source)
+**word_exam_points** (word_id, exam_type, year, section, point_text, example_sentence)
+**word_analysis** (word_id, root_analysis, word_family)
+
+### 3.3 记忆状态与学习记录
+**user_word_bind**
+- `user_id`, `word_id`, `difficulty_initial`, `difficulty`, `stability`, `retrievability`
+- `next_review_time`, `review_count`, `is_stubborn`, `stubborn_since`, `consecutive_errors`
+
+**quiz_records**
+- `id`, `user_id`, `word_id`, `study_mode` (quick_memory, context_deep, unified_review)
+- `grade` (最终传递 FSRS 的 1.0~4.0 浮点)
+- `composite_grade`, `step_results` (JSON), `hint_total`
+- `reaction_time_ms`, `source` (static/dynamic/conversation...)
+- `created_at`
+
+**study_plans**
+- `id`, `user_id`, `date`, `review_count`, `new_word_count`, `estimated_minutes`
+- `intensity_label`, `adoption_status` (fully_accepted/modified/rejected)
+- `created_at`
+
+### 3.4 复习与顽固词
+**forgetting_alerts** (user_id, word_id, r_value, alert_date, is_reviewed)
+**stubborn_log** (user_id, word_id, mark_time, unmark_time, reason)
+
+### 3.5 Agent 对话相关
+**chat_sessions** (id, user_id, conversation_type, created_at)
+**chat_messages** (id, session_id, role, content, card_data JSON, suggested_actions JSON)
+**conversation_quiz_log** (user_id, word_id, session_id, used_correctly BOOLEAN, created_at) — 数据隔离用
+**agent_logs** (user_id, type, request_params, response, success)
+
+### 3.6 备考规划
+**exam_plans** (user_id, exam_type, target_vocab, plan_json, generated_at)
+
+所有 `*_time` 字段使用 `datetime` 类型，R 值相关使用 `double`。
+
+---
+
+## 四、API 接口列表（按模块）
+
+### 4.1 认证模块
+- `POST /api/auth/register`  注册
+- `POST /api/auth/login`  登录
+
+### 4.2 用户模块
+- `GET /api/user/profile`  获取个人信息及偏好
+- `PUT /api/user/preferences`  更新偏好
+- `PUT /api/user/exam-plan`  更新备考计划
+
+### 4.3 词库模块
+- `GET /api/words`  单词列表（分页、筛选）
+- `GET /api/words/{id}`  单词详情
+- `GET /api/words/search`  搜索
+- `GET /api/words/recommend`  Agent 推荐词单（参数：数量、模式）
+
+### 4.4 学习模块
+- `POST /api/plan/generate`  生成 / 微调今日计划
+- `POST /api/plan/confirm`  确认计划
+- `POST /api/study/submit-quick-memory`  提交快速记忆结果（单个或批量）
+- `POST /api/study/submit-context-deep-group`  提交整组语境深度学习结果
+- `POST /api/study/submit-review`  提交复习结果（包含三步检测与追加拼写）
+- `GET /api/study/next-word`  智能出题（备用，非核心）
+
+### 4.5 复习模块
+- `GET /api/review/queue`  获取今日复习队列（已分层）
+- `POST /api/review/result`  处理复习结果（同 study/submit-review）
+
+### 4.6 备考规划模块
+- `POST /api/exam-plan/start-dialog`  开始规划对话，获取首条信息
+- `POST /api/exam-plan/continue-dialog`  发送用户回答，获取下一条消息
+- `POST /api/exam-plan/generate`  根据收集信息生成最终计划
+- `GET /api/exam-plan/status`  获取当前计划进度与调整建议
+
+### 4.7 Agent 模块
+- `POST /api/agent/chat/send`  发送对话消息，返回 Agent 回复
+- `GET /api/agent/chat/history`  获取对话历史
+- `POST /api/agent/chat/new-session`  创建新会话
+- `GET /api/agent/recommend`  获取今日推荐（模式、词单）
+- `POST /api/agent/generate-questions`  请求生成特定单词的题目（短文等）
+- `GET /api/agent/weekly-report`  获取或生成周报
+
+### 4.8 统计模块
+- `GET /api/statistics/overview`  概览数据
+- `GET /api/statistics/retention`  记忆保持率趋势
+- `GET /api/statistics/forgetting-curve`  遗忘曲线对比数据
+- `GET /api/statistics/heatmap`  日历热力图数据
+- `GET /api/statistics/daily-stats`  每日学习量
+- `GET /api/statistics/reaction-time`  反应时分布
+- `GET /api/statistics/weak-words`  薄弱词云数据
+
+### 4.9 日历模块
+- `GET /api/calendar/monthly?year=&month=`  月度打卡数据
+- `POST /api/calendar/checkin`  手动打卡（实际多为自动）
+
+---
+
+## 五、核心算法实现要点
+
+### 5.1 FSRS 引擎封装
+- 实现 `Scheduler` 类，包含 `review(word, grade, studyMode)` 方法，返回更新后的 S、D、R、next_review_time。
+- 内部集成 DF 计算器 `DynamicForgettingFactor`，根据 `studyMode` 选择不同的因子组合。
+- 评分映射器 `GradeMapper`：将各类原始行为数据（快速记忆的判断结果、深度学习的步骤得分、复习的三步得分）转换为 1.0~4.0 的浮点 `grade`。
+
+### 5.2 DF 因子计算器
+- `lambda_rt(reactionTime, userMu, userSigma)`：计算反应时因子，值域 [0.7, 1.3]。
+- `lambda_acc(historyCorrectRate)`：历史正确率因子，值域 [0.7, 1.3]。
+- `lambda_skip_custom(hintTotal, reviewCount)`：提示惩罚因子，值域 [0.7, 1.3]。
+- 合成 DF，最终 clip 至 [0.5, 1.5]。
+
+### 5.3 错误强化处理器
+- 实现规则引擎，检查触发条件，执行额外的 S、D 调整及顽固词标记。
+
+### 5.4 冷启动
+- 新用户 μ=8s, σ=3s，答题次数达标后平滑切换至个人统计。
+
+---
+
+## 六、安全与性能考虑
+
+- **安全**：密码 BCrypt 加密，JWT token 有效期 7 天，刷新机制可后续实现。
+- **并发**：学习记录提交使用 Redis 分布式锁（`userId:wordId`），防止同一单词被短时间内重复更新。
+- **读写分离**：统计查询涉及大量数据，可考虑使用 MyBatis 直接查询只读副本或专门的数据仓库视图。
+- **缓存**：词库数据、Agent 生成的短文、辨析结果等缓存至 Redis，减少数据库与 API 压力。
+- **异常处理**：统一响应体 `Result`，全局异常拦截器返回友好错误信息。
+
+---
+
+## 七、开发计划（后端）
+
+| 阶段 | 天数 | 内容 |
+|------|------|------|
+| 基础环境与脚手架 | 1天 | 项目初始化、数据库建表、Security+JWT 配置、Swagger 集成 |
+| 用户与认证模块 | 1天 | 注册、登录、偏好设置 CRUD |
+| 词库模块 | 1.5天 | 词库 CRUD、推荐逻辑、真题考点等 |
+| 算法核心（FSRS+DF） | 2天 | 实现 FSRS 引擎、DF 计算器、评分映射、错误强化 |
+| 学习与复习模块 | 2天 | 学习计划生成、快速记忆/深度学习/复习记录处理、顽固词管理 |
+| 备考规划模块 | 1.5天 | 对话状态机、计划生成、调整接口 |
+| Agent 与 AI 调用 | 2天 | DeepSeek 客户端、熔断、对话管理、动态出题、周报生成 |
+| 统计与日历模块 | 1.5天 | 所有统计图表数据接口、打卡记录 |
+| 联调测试与性能优化 | 1.5天 | 与前端联调、异常场景测试、缓存优化、索引优化 |
+| **合计** | **14天** | |
+
+---
+
+本后端规划覆盖了系统所需的所有技术点与接口，与前端方案无缝对接。建议前后端同步开发，先实现认证与词库，再逐步完成学习与 AI 模块。

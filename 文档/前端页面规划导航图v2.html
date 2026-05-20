@@ -1,0 +1,185 @@
+
+<style>
+.wrap { font-family: var(--font-sans); padding: 1rem 0; }
+.phase-label { font-size: 11px; font-weight: 500; color: var(--color-text-tertiary); letter-spacing: 0.07em; text-transform: uppercase; margin: 1.5rem 0 8px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 4px; }
+.pcard {
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-lg);
+  padding: 12px 14px; background: var(--color-background-primary);
+  cursor: pointer; user-select: none;
+  transition: border-color 0.12s, background 0.12s;
+}
+.pcard:hover { border-color: var(--color-border-secondary); background: var(--color-background-secondary); }
+.pcard.on { border: 1.5px solid #4A9EFF; background: #EBF4FF; }
+.pcard .ico { font-size: 18px; color: var(--color-text-secondary); margin-bottom: 5px; }
+.pcard.on .ico { color: #185FA5; }
+.pcard .nm { font-size: 13px; font-weight: 500; color: var(--color-text-primary); margin: 0 0 2px; }
+.pcard.on .nm { color: #0C447C; }
+.pcard .ds { font-size: 11px; color: var(--color-text-tertiary); margin: 0; }
+
+.detail { margin-top: 1.2rem; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); background: var(--color-background-primary); overflow: hidden; display: none; }
+.detail.show { display: block; }
+.dhead { padding: 14px 16px 12px; border-bottom: 0.5px solid var(--color-border-tertiary); display: flex; align-items: center; gap: 10px; }
+.dhead .di { font-size: 22px; color: #4A9EFF; }
+.dhead .dt { font-size: 15px; font-weight: 500; margin: 0; }
+.dhead .ds2 { font-size: 11px; color: var(--color-text-tertiary); margin: 0; }
+.dbody { padding: 14px 16px; }
+.sec { margin-bottom: 14px; }
+.sec:last-child { margin-bottom: 0; }
+.slabel { font-size: 10px; font-weight: 500; color: var(--color-text-tertiary); letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 7px; }
+.sdesc { font-size: 12px; color: var(--color-text-secondary); line-height: 1.6; margin: 0; }
+.clist { list-style: none; padding: 0; margin: 0; }
+.clist li { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 0.5px solid var(--color-border-tertiary); font-size: 12px; }
+.clist li:last-child { border-bottom: none; }
+.clist .cn { font-weight: 500; color: var(--color-text-primary); }
+.clist .cd { color: var(--color-text-tertiary); font-size: 11px; }
+.tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.tag { font-size: 11px; padding: 3px 8px; border-radius: 999px; }
+.tb { background: #EBF4FF; color: #185FA5; }
+.tg { background: #EAF3DE; color: #3B6D11; }
+.ta { background: #FAEEDA; color: #854F0B; }
+.tgr { background: var(--color-background-secondary); color: var(--color-text-secondary); }
+</style>
+
+<div class="wrap" id="root">
+  <div class="phase-label">Phase 0 · 框架层</div>
+  <div class="cards">
+    <div class="pcard" data-key="layout"><div class="ico"><i class="ti ti-layout-sidebar" aria-hidden="true"></i></div><p class="nm">MainLayout</p><p class="ds">导航 + 容器框架</p></div>
+    <div class="pcard" data-key="common"><div class="ico"><i class="ti ti-box" aria-hidden="true"></i></div><p class="nm">公共组件</p><p class="ds">Loading / Empty / Error</p></div>
+    <div class="pcard" data-key="timo"><div class="ico"><i class="ti ti-robot" aria-hidden="true"></i></div><p class="nm">TiMo 组件</p><p class="ds">FAB + 对话浮层</p></div>
+  </div>
+
+  <div class="phase-label">Phase 1 · 认证</div>
+  <div class="cards">
+    <div class="pcard" data-key="login"><div class="ico"><i class="ti ti-login" aria-hidden="true"></i></div><p class="nm">登录 / 注册</p><p class="ds">Login.vue · 3步注册</p></div>
+    <div class="pcard" data-key="onboarding"><div class="ico"><i class="ti ti-hand-finger" aria-hidden="true"></i></div><p class="nm">首次引导</p><p class="ds">OnboardingOverlay</p></div>
+  </div>
+
+  <div class="phase-label">Phase 2 · 核心页面</div>
+  <div class="cards">
+    <div class="pcard" data-key="dashboard"><div class="ico"><i class="ti ti-home" aria-hidden="true"></i></div><p class="nm">今日规划</p><p class="ds">Dashboard.vue</p></div>
+    <div class="pcard" data-key="study"><div class="ico"><i class="ti ti-brain" aria-hidden="true"></i></div><p class="nm">学习答题</p><p class="ds">Study.vue · 3种模式</p></div>
+  </div>
+
+  <div class="phase-label">Phase 3 · 辅助页面</div>
+  <div class="cards">
+    <div class="pcard" data-key="wordbank"><div class="ico"><i class="ti ti-books" aria-hidden="true"></i></div><p class="nm">词库</p><p class="ds">Wordbank.vue</p></div>
+    <div class="pcard" data-key="stats"><div class="ico"><i class="ti ti-chart-bar" aria-hidden="true"></i></div><p class="nm">统计</p><p class="ds">Stats.vue</p></div>
+    <div class="pcard" data-key="calendar"><div class="ico"><i class="ti ti-calendar" aria-hidden="true"></i></div><p class="nm">学习日历</p><p class="ds">Calendar.vue</p></div>
+    <div class="pcard" data-key="profile"><div class="ico"><i class="ti ti-user" aria-hidden="true"></i></div><p class="nm">个人中心</p><p class="ds">Profile.vue</p></div>
+  </div>
+
+  <div class="detail" id="detail"></div>
+</div>
+
+<script>
+var DATA = {
+  layout: {
+    ico:'ti-layout-sidebar', nm:'MainLayout.vue', sub:'全局布局容器',
+    layout:'顶部固定导航栏（64px高）+ 右下角 TiMo FAB（64px圆形）+ router-view 主内容区（顶部 padding 64px 避免遮挡）',
+    comps:[['Navbar.vue','顶部导航栏'],['TiMoFAB.vue','右下角悬浮按钮'],['TiMoDialog.vue','对话浮层（v-if控制）'],['router-view','页面容器']],
+    design:['页面背景 #F7F9FC 极浅灰蓝','导航栏白色背景 + 底部 1px 分割线','激活路由：左侧 3px 蓝色竖条 + 文字 #4A9EFF','导航图标 20px Tabler outline 风格'],
+    inter:['路由切换：fade-slide 入场（translateY 8px→0，200ms）','TiMo FAB 悬停：光环 pulse 放大动画','导航收起时只显示图标（可选 mini 模式）']
+  },
+  common: {
+    ico:'ti-box', nm:'公共组件库', sub:'components/common/ 三个基础组件',
+    layout:'三个独立组件按需 import，不依赖具体页面逻辑',
+    comps:[['LoadingSpinner.vue','全屏加载遮罩'],['EmptyState.vue','空状态展示（插画+文字）'],['ErrorState.vue','错误状态 + 重试按钮']],
+    design:['LoadingSpinner：半透明白色遮罩 + TiMo 小猫旋转动画','EmptyState：SVG 插画 + 灰色标题 + 描述文字','ErrorState：红色感叹圆 + 错误信息 + 蓝色重试按钮'],
+    inter:['EmptyState 支持默认 slot 插入操作按钮','ErrorState emit retry 事件由父组件处理重载']
+  },
+  timo: {
+    ico:'ti-robot', nm:'TiMo 对话组件', sub:'components/agent/ 4个子组件',
+    layout:'FAB 固定右下角 bottom:24px right:24px；Dialog 弹出位置 right:30px top:15%，宽480px，1280px以下收窄至380px',
+    comps:[['TiMoFAB.vue','64px 圆形悬浮按钮 + 光环'],['TiMoAvatar.vue','按状态切换的头像（5种）'],['TiMoDialog.vue','对话主浮层（含消息列表+输入框）'],['TiMoMsgBubble.vue','消息气泡（文本/卡片/操作三种类型）']],
+    design:['FAB：主色 #4A9EFF 背景，白色猫图标，box-shadow pulse 动画','用户气泡：右对齐，#4A9EFF 底色，白色文字，圆角 16px 右下角尖','TiMo气泡：左对齐，#F0F4FF 底色，深色文字','offline 态：头像灰色，输入框 disabled + 灰色提示'],
+    inter:['idle→thinking：头像切换 + 光环加速旋转','消息超100条：slice(-100) 自动截断','发送后自动滚到底部（watch length + nextTick）','api:meltdown 事件 → setApiStatus offline']
+  },
+  login: {
+    ico:'ti-login', nm:'Login.vue', sub:'登录 + 3步注册 + 前测弹窗',
+    layout:'左右分栏：左 40% 品牌插画（深蓝背景），右 60% 表单区（白色）。表单最大宽 400px 垂直居中。注册分3步显示',
+    comps:[['LoginForm','邮箱+密码登录表单'],['RegisterStep1','账号密码+确认密码'],['RegisterStep2','难度自评+词书选择（合并1步）'],['RegisterStep3','完成动画页'],['PreTestModal','5题前测 el-dialog']],
+    design:['左侧：#1a3a6e→#2d5fb5 渐变，TiMo 大图 + 品牌语','右侧：纯白，3步进度点连接线（激活蓝/未激活灰）','前测弹窗：白色卡片居中，题目大字，4个选项按钮','Step3：TiMo 举爪插画 + 撒花 canvas 动画'],
+    inter:['登录↔注册切换：表单 slide-fade 过渡','注册 API 失败：catch 后 el-alert 展示错误 + 回退 Step1','前测5题无倒计时，答完即时出结果页','Step3完成：写 token + 跳转 Dashboard']
+  },
+  onboarding: {
+    ico:'ti-hand-finger', nm:'OnboardingOverlay.vue', sub:'首次登录引导蒙层（3步）',
+    layout:'全屏固定蒙层（rgba 0,0,0,0.5），目标元素区域镂空高亮，引导气泡跟随目标位置出现',
+    comps:[['SpotlightRect','高亮镂空矩形（clip-path）'],['GuideBubble','白色引导气泡（含TiMo头像+文字+按钮）'],['StepDots','底部3个进度圆点']],
+    design:['Step1 高亮：顶部导航"今日规划"区域','Step2 高亮：Dashboard 意图输入区','Step3 高亮：右下角 TiMo FAB','气泡：白色卡片，圆角12px，箭头指向高亮区域'],
+    inter:['点击蒙层不关闭（防误触）','跳过按钮：灰色文字链接，随时可退出','完成后 localStorage.setItem("tiMo_onboarded","true")','气泡位置根据高亮目标动态计算（getBoundingClientRect）']
+  },
+  dashboard: {
+    ico:'ti-home', nm:'Dashboard.vue', sub:'今日学习规划页（Agent 主导）',
+    layout:'单列居中，最大宽 900px。从上到下：问候区 → 4格快照卡 → TiMo推荐区 → 滑块微调区 → 开始按钮',
+    comps:[['DailyGreeting','TiMo头像+动态问候语+日期'],['SnapshotCards','4个数据指标卡（网格）'],['RecommendBlock','Agent推荐词单卡片'],['PlanAdjuster','新词/复习词滑块'],['StartButton','开始学习主按钮']],
+    design:['问候区：TiMo 头像 40px + 大号问候文字（每日不同）','快照卡：浅灰底，数字 24px DIN 字体，label 12px 灰色','推荐卡：左侧 4px 蓝色边框，蓝底标签"TiMo推荐"','滑块：el-slider，双轨，实时显示预计时长'],
+    inter:['滑块防抖 300ms → POST /api/plan/generate → 更新估算时长','采纳推荐 → router push /study 并预填词单','开始学习 → el-dialog 选择模式（快速/深度/复习）']
+  },
+  study: {
+    ico:'ti-brain', nm:'Study.vue + 题型组件', sub:'核心答题页（沉浸式全屏，无顶部导航）',
+    layout:'顶部进度条（全宽）+ 中心题卡（最大宽 680px 居中）+ 底部操作区（固定）',
+    comps:[['ProgressBar','顶部细进度条（蓝色）'],['FillBlankCard','语境填空题'],['SynonymCard','同义词辨析'],['SpellingCard','听音拼写（字母格输入）'],['PolysemyCard','一词多义判断'],['AnswerFeedback','正确绿/错误红 反馈层覆盖'],['StudySummary','Session结束弹窗'],['FatigueSnackbar','20分钟疲劳提示条']],
+    design:['背景：#F7F9FC，题卡：白色 border-radius:16px，box-shadow 轻柔','正确：绿色 #52c41a 背景 300ms 淡入 + 对号图标','错误：卡片抖动 shake 动画 + 红色边框 + 下方展开释义','拼写格：每字母一个 14px 方框 input，自动 focus 下一格'],
+    inter:['答题时长累计（useTimer composable，单位ms）超1200000ms提示','键盘支持：数字键1-4选答案，Enter 确认，Space 播放发音','Session 结束：显示正确率+顽固词+耗时，可选继续或退出']
+  },
+  wordbank: {
+    ico:'ti-books', nm:'Wordbank.vue', sub:'词库管理页',
+    layout:'左侧筛选栏 240px（固定）+ 右侧词卡列表（弹性）。点击词条弹出右侧 Drawer 详情',
+    comps:[['SearchBar','顶部搜索框（防抖300ms）'],['FilterPanel','左侧：词书/熟悉度/词性筛选'],['WordCard','词条卡片（单词+词性+释义+熟悉度条）'],['WordDetailDrawer','v-model 抽屉：音标/释义/例句/FSRS状态']],
+    design:['词卡：白色卡片，单词 18px 粗体，词性灰色小标签，释义一行截断','熟悉度：底部细进度条（绿色=高，橙=中，红=低）','Drawer 宽 480px，例句区蓝色左边框，FSRS状态用仪表盘小图'],
+    inter:['筛选状态全部用组件内 ref，不进 Pinia','词卡 hover：右上角快捷操作图标浮现（加入今日/标记顽固）','Drawer 关闭时清空选中词，避免残留状态']
+  },
+  stats: {
+    ico:'ti-chart-bar', nm:'Stats.vue', sub:'统计仪表盘（ECharts）',
+    layout:'顶部4指标卡（网格）→ 热力图（全宽）→ 左右各半折线+饼图 → el-collapse 折叠的遗忘曲线和词云',
+    comps:[['MetricCards','总词数/今日学习/连续天/平均保留率'],['HeatmapChart','GitHub风格热力图'],['RetentionLine','记忆保留率折线'],['ModePie','模式分布饼图'],['ForgettingCurve','遗忘曲线对比（折叠）'],['WordCloud','词云（折叠，echarts-wordcloud）']],
+    design:['指标卡：浅灰底，数字粗体24px，label 12px','热力图：绿色深浅代表强度（仿 GitHub）','时间范围：右上角7天/30天/全部 tab 切换','折叠区默认收起，减少首屏信息压力'],
+    inter:['图表 resize 监听 window 尺寸变化','词云点击 → router push /wordbank?word=xxx','时间范围切换 → 重新请求接口 + 图表 setOption 更新']
+  },
+  calendar: {
+    ico:'ti-calendar', nm:'Calendar.vue', sub:'学习日历打卡视图',
+    layout:'顶部当月汇总条 + el-calendar 主体 + 底部选中日详情卡（点击日期后滑入）',
+    comps:[['MonthSummary','当月：打卡天数/总词数/总时长'],['el-calendar','日历主体（first-day-of-week=1）'],['DayBadge','日期格子内的学习徽标'],['DayDetailCard','选中日详情（模式分布+词数+时长）']],
+    design:['有记录的日期：格子内蓝色圆点','连续打卡：圆点间绿色连接细线','选中态：格子蓝色边框高亮','详情卡：底部 slide-up 进入，白色卡片'],
+    inter:['月份切换：watch computed(年月) → 重新 GET /api/calendar/monthly','点击格子：设置 selectedDate → 详情卡显示','今日按钮：回到当月并选中今天']
+  },
+  profile: {
+    ico:'ti-user', nm:'Profile.vue', sub:'个人中心',
+    layout:'左侧用户信息卡（固定 260px）+ 右侧 el-tabs 设置区（弹性宽度）',
+    comps:[['UserInfoCard','头像（可上传）+用户名+备考目标+注册时间'],['PreferenceForm','每日目标/词书/难度偏好'],['NotifSettings','通知开关设置'],['DangerZone','退出登录/账号注销（红色卡片）']],
+    design:['头像：72px 圆形，hover 显示上传图标覆盖','用户卡：白色，底部蓝色进度条（备考天数进度）','设置 Tab：偏好/通知/安全 三个 tab','危险区：红色 1px 边框卡片，操作需 el-popconfirm 二次确认'],
+    inter:['偏好设置防抖 1s 自动保存 → 接口 PATCH /api/user/preference','头像上传：input type=file + canvas 裁剪预览','退出：清空 Pinia user store + localStorage token → 跳 /login']
+  }
+};
+
+document.getElementById('root').addEventListener('click', function(e) {
+  var card = e.target.closest('.pcard');
+  if (!card) return;
+  var key = card.getAttribute('data-key');
+  if (!key || !DATA[key]) return;
+
+  document.querySelectorAll('.pcard').forEach(function(c) { c.classList.remove('on'); });
+  card.classList.add('on');
+
+  var d = DATA[key];
+  var compsHtml = d.comps.map(function(c) {
+    return '<li><span class="cn">' + c[0] + '</span><span class="cd">' + c[1] + '</span></li>';
+  }).join('');
+  var designHtml = d.design.map(function(s) { return '<span class="tag tb">' + s + '</span>'; }).join('');
+  var interHtml = d.inter.map(function(s) { return '<span class="tag tg">' + s + '</span>'; }).join('');
+
+  var box = document.getElementById('detail');
+  box.className = 'detail show';
+  box.innerHTML = '<div class="dhead"><i class="ti ' + d.ico + ' di" aria-hidden="true"></i><div><p class="dt">' + d.nm + '</p><p class="ds2">' + d.sub + '</p></div></div>'
+    + '<div class="dbody">'
+    + '<div class="sec"><div class="slabel">布局说明</div><p class="sdesc">' + d.layout + '</p></div>'
+    + '<div class="sec"><div class="slabel">子组件</div><ul class="clist">' + compsHtml + '</ul></div>'
+    + '<div class="sec"><div class="slabel">视觉设计</div><div class="tags">' + designHtml + '</div></div>'
+    + '<div class="sec"><div class="slabel">交互逻辑</div><div class="tags">' + interHtml + '</div></div>'
+    + '</div>';
+
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+</script>

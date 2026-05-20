@@ -1,0 +1,475 @@
+/* ============================================
+   TiMo背单词 — 柔和绿 × 留白 × 日本美学
+   Design DNA: 低调、克制、有质感
+   ============================================ */
+
+:root {
+  /* === 柔和绿 Palette === */
+  --color-primary: #7a9e7e;
+  --color-primary-light: #a3c4a6;
+  --color-primary-lighter: #d4e8d5;
+  --color-primary-bg: #edf5ed;
+  --color-primary-dark: #5c7e5f;
+  --color-primary-darker: #4a6a4d;
+
+  /* === Accent (muted earth tones) === */
+  --color-blue: #7a9baa;
+  --color-blue-dark: #5d7f8e;
+  --color-blue-light: #e8f1f5;
+  --color-orange: #c49a6c;
+  --color-orange-dark: #a67d50;
+  --color-orange-light: #f5ede4;
+  --color-purple: #9a8aad;
+  --color-purple-dark: #7d6e90;
+  --color-purple-light: #f0ecf5;
+  --color-red: #c47a7a;
+  --color-red-dark: #a65d5d;
+  --color-red-light: #f5eded;
+  --color-yellow: #c4b87a;
+  --color-yellow-dark: #a69a5d;
+  --color-yellow-light: #f5f2e4;
+
+  /* === Semantic === */
+  --color-success: #7a9e7e;
+  --color-success-bg: #edf5ed;
+  --color-warning: #c49a6c;
+  --color-warning-bg: #f5ede4;
+  --color-danger: #c47a7a;
+  --color-danger-bg: #f5eded;
+
+  /* === Text === */
+  --color-text-primary: #2c2c2c;
+  --color-text-regular: #4a4a4a;
+  --color-text-secondary: #8a8a8a;
+  --color-text-muted: #b0b0b0;
+  --color-text-placeholder: #cccccc;
+
+  /* === Background === */
+  --color-bg-page: #faf9f6;
+  --color-bg-card: #ffffff;
+  --color-bg-hover: #f3f2ee;
+  --color-bg-overlay: rgba(0, 0, 0, 0.3);
+
+  /* === Border === */
+  --color-border-lighter: #f0efeb;
+  --color-border-light: #e5e4df;
+  --color-border-base: #d4d3ce;
+  --color-border-dark: #b0afaa;
+
+  /* === Shadow (whisper-soft) === */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.07);
+  --shadow-xl: 0 8px 32px rgba(0, 0, 0, 0.08);
+  --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.04);
+  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.06);
+
+  /* === Radius === */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* === Spacing === */
+  --navbar-height: 60px;
+  --content-max-width: 1080px;
+  --content-padding: 40px;
+
+  /* === Typography === */
+  --font-family: 'Noto Sans SC', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+  --font-display: 'Noto Serif SC', 'Georgia', 'Times New Roman', serif;
+
+  /* === Element Plus Overrides === */
+  --el-color-primary: #7a9e7e;
+  --el-color-primary-light-3: #a3c4a6;
+  --el-color-primary-light-5: #bdd6bf;
+  --el-color-primary-light-7: #d4e8d5;
+  --el-color-primary-light-8: #edf5ed;
+  --el-color-primary-light-9: #f5faf5;
+  --el-color-primary-dark-2: #5c7e5f;
+  --el-border-radius-base: 8px;
+  --el-font-family: var(--font-family);
+}
+
+/* === Fonts === */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@400;600;700&display=swap');
+
+/* === Reset === */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.7;
+  color: var(--color-text-regular);
+  background: var(--color-bg-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: 0.01em;
+}
+
+a {
+  color: var(--color-text-regular);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--color-primary-dark);
+}
+
+/* === Page Transition === */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+/* === Scrollbar === */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d4d3ce;
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #b0afaa;
+}
+
+/* ============================================
+   Element Plus Overrides — Japanese Minimal
+   ============================================ */
+
+/* === Card === */
+.el-card {
+  border-radius: var(--radius-md) !important;
+  border: 1px solid var(--color-border-lighter) !important;
+  box-shadow: var(--shadow-card) !important;
+  transition: box-shadow 0.25s ease !important;
+}
+
+.el-card:hover {
+  box-shadow: var(--shadow-card-hover) !important;
+}
+
+/* === Button === */
+.el-button {
+  border-radius: var(--radius-sm) !important;
+  font-weight: 500 !important;
+  font-family: var(--font-family) !important;
+  letter-spacing: 0.02em;
+  transition: all 0.2s ease !important;
+  text-transform: none !important;
+}
+
+.el-button--primary {
+  background: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  box-shadow: none !important;
+  color: #fff !important;
+  font-size: 14px !important;
+  height: 40px !important;
+  padding: 0 24px !important;
+}
+
+.el-button--primary:hover {
+  background: var(--color-primary-dark) !important;
+  border-color: var(--color-primary-dark) !important;
+}
+
+.el-button--primary:active {
+  background: var(--color-primary-darker) !important;
+}
+
+.el-button--default {
+  background: #fff !important;
+  border: 1px solid var(--color-border-base) !important;
+  box-shadow: none !important;
+  color: var(--color-text-regular) !important;
+}
+
+.el-button--default:hover {
+  border-color: var(--color-border-dark) !important;
+  color: var(--color-text-primary) !important;
+}
+
+.el-button--danger {
+  background: var(--color-danger) !important;
+  border-color: var(--color-danger) !important;
+  box-shadow: none !important;
+  color: #fff !important;
+}
+
+.el-button.is-text {
+  box-shadow: none !important;
+  color: var(--color-text-secondary) !important;
+}
+
+/* === Input === */
+.el-input__wrapper {
+  border-radius: var(--radius-sm) !important;
+  padding: 4px 14px !important;
+  box-shadow: 0 0 0 1px var(--color-border-light) !important;
+  transition: box-shadow 0.2s ease !important;
+}
+
+.el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1.5px var(--color-primary) !important;
+}
+
+.el-input__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--color-border-base) !important;
+}
+
+/* === Tag === */
+.el-tag {
+  border-radius: var(--radius-full) !important;
+  font-weight: 500 !important;
+  font-size: 12px !important;
+  padding: 0 10px !important;
+  border: none !important;
+}
+
+.el-tag--success {
+  background: var(--color-success-bg) !important;
+  color: var(--color-primary-dark) !important;
+}
+
+.el-tag--warning {
+  background: var(--color-warning-bg) !important;
+  color: var(--color-orange-dark) !important;
+}
+
+.el-tag--danger {
+  background: var(--color-danger-bg) !important;
+  color: var(--color-red-dark) !important;
+}
+
+.el-tag--info {
+  background: var(--color-blue-light) !important;
+  color: var(--color-blue-dark) !important;
+}
+
+/* === Table === */
+.el-table {
+  --el-table-border-color: var(--color-border-lighter);
+  --el-table-header-bg-color: #faf9f6;
+  --el-table-row-hover-bg-color: var(--color-bg-hover);
+}
+
+.el-table th.el-table__cell {
+  font-weight: 600 !important;
+  color: var(--color-text-secondary);
+  font-size: 12px !important;
+}
+
+/* === Dialog === */
+.el-dialog {
+  border-radius: var(--radius-lg) !important;
+  border: 1px solid var(--color-border-lighter) !important;
+  box-shadow: var(--shadow-xl) !important;
+}
+
+/* === Message === */
+.el-message {
+  border-radius: var(--radius-md) !important;
+  border: 1px solid var(--color-border-lighter) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+
+/* === Dropdown === */
+.el-dropdown-menu {
+  border-radius: var(--radius-md) !important;
+  border: 1px solid var(--color-border-lighter) !important;
+  box-shadow: var(--shadow-lg) !important;
+  padding: 4px !important;
+}
+
+.el-dropdown-menu__item {
+  border-radius: 6px !important;
+  font-weight: 400 !important;
+  padding: 8px 12px !important;
+}
+
+/* === Form === */
+.el-form-item__label {
+  font-weight: 500 !important;
+  color: var(--color-text-regular) !important;
+}
+
+/* === Pagination === */
+.el-pagination {
+  --el-pagination-button-bg-color: #fff;
+  font-weight: 500;
+}
+
+.el-pager li {
+  border-radius: 6px !important;
+  font-weight: 500 !important;
+}
+
+/* === Drawer === */
+.el-drawer__header {
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-border-lighter);
+}
+
+.el-divider {
+  border-top-color: var(--color-border-lighter);
+}
+
+/* ============================================
+   Animations — Subtle, Japanese-inspired
+   ============================================ */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+@keyframes progress-fill {
+  from { width: 0; }
+}
+
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fadeIn 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.scale-in {
+  animation: scaleIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.fade-in-up-delay-1 { animation-delay: 0.08s; opacity: 0; }
+.fade-in-up-delay-2 { animation-delay: 0.16s; opacity: 0; }
+.fade-in-up-delay-3 { animation-delay: 0.24s; opacity: 0; }
+.fade-in-up-delay-4 { animation-delay: 0.32s; opacity: 0; }
+.fade-in-up-delay-5 { animation-delay: 0.40s; opacity: 0; }
+.fade-in-up-delay-6 { animation-delay: 0.48s; opacity: 0; }
+.fade-in-up-delay-7 { animation-delay: 0.56s; opacity: 0; }
+.fade-in-up-delay-8 { animation-delay: 0.64s; opacity: 0; }
+
+/* === Hover micro-interactions === */
+.hover-gentle {
+  transition: transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              box-shadow 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.hover-gentle:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.hover-subtle {
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+.hover-subtle:hover {
+  opacity: 0.85;
+}
+
+/* ============================================
+   Responsive
+   ============================================ */
+
+@media (max-width: 1024px) {
+  :root {
+    --content-padding: 20px;
+    --navbar-height: 52px;
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --content-padding: 16px;
+    --navbar-height: 48px;
+  }
+
+  body { font-size: 13px; }
+
+  .el-dialog { width: 92vw !important; margin: 0 auto; }
+  .el-drawer { width: 85vw !important; }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --content-padding: 12px;
+  }
+
+  .el-card { border-radius: var(--radius-sm) !important; }
+  .el-button { padding: 0 16px !important; }
+}

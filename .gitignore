@@ -1,0 +1,24 @@
+# Local agent state
+.claude/
+.codex/
+.omc/
+.playwright-mcp/
+
+# Redis dump
+dump.rdb
+
+# Screenshots
+screenshots/
+*.png
+
+# Maven build
+backend/target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
