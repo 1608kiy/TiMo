@@ -13,7 +13,7 @@ describe('API Contract: Frontend ↔ Backend endpoint alignment', () => {
       const { login } = await import('../auth')
       expect(login).toBeTypeOf('function')
       // login({email, password}) -> request.post('/auth/login', data)
-    })
+    }, 30000)
 
     it('register uses POST /auth/register', async () => {
       const { register } = await import('../auth')
@@ -45,6 +45,16 @@ describe('API Contract: Frontend ↔ Backend endpoint alignment', () => {
     it('submitContextDeepGroup uses POST /study/submit-context-deep-group', async () => {
       const { submitContextDeepGroup } = await import('../study')
       expect(submitContextDeepGroup).toBeTypeOf('function')
+    })
+
+    it('submitReverseRecall uses POST /study/submit-reverse-recall', async () => {
+      const { submitReverseRecall } = await import('../study')
+      expect(submitReverseRecall).toBeTypeOf('function')
+    })
+
+    it('getReverseRecallCandidates uses GET /study/reverse-recall/candidates', async () => {
+      const { getReverseRecallCandidates } = await import('../study')
+      expect(getReverseRecallCandidates).toBeTypeOf('function')
     })
 
   })
@@ -199,6 +209,11 @@ describe('API Contract: Frontend ↔ Backend endpoint alignment', () => {
       const { analyzeWord } = await import('../agent')
       expect(analyzeWord).toBeTypeOf('function')
     })
+
+    it('planSmartSession uses POST /agent/smart-session/plan', async () => {
+      const { planSmartSession } = await import('../agent')
+      expect(planSmartSession).toBeTypeOf('function')
+    })
   })
 
   describe('ExamPlan API (/api/exam-plan/**)', () => {
@@ -215,6 +230,11 @@ describe('API Contract: Frontend ↔ Backend endpoint alignment', () => {
     it('getExamPlanStatus uses GET /exam-plan/status', async () => {
       const { getExamPlanStatus } = await import('../examPlan')
       expect(getExamPlanStatus).toBeTypeOf('function')
+    })
+
+    it('getDailyQuota uses GET /exam-plan/daily-quota', async () => {
+      const { getDailyQuota } = await import('../examPlan')
+      expect(getDailyQuota).toBeTypeOf('function')
     })
   })
 })

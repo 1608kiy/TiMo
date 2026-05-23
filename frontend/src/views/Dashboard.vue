@@ -54,11 +54,98 @@
       </div>
     </div>
 
+    <!-- Weekly Insight -->
+    <div class="card weekly-insight-card fade-in-up fade-in-up-delay-3" v-if="showWeeklyInsight">
+      <div class="card-header">
+        <span class="card-title">📊 本周洞察</span>
+        <span class="card-meta">每周一更新</span>
+      </div>
+      <!-- Loading State -->
+      <div v-if="weeklyLoading" class="weekly-skeleton">
+        <div class="skeleton-row">
+          <div class="skeleton-chip"></div>
+          <div class="skeleton-chip"></div>
+          <div class="skeleton-chip"></div>
+          <div class="skeleton-chip"></div>
+        </div>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line short"></div>
+      </div>
+      <!-- Error State -->
+      <div v-else-if="weeklyError" class="weekly-error">
+        <span class="weekly-error-icon">⚠️</span>
+        <span>周报加载失败，请刷新重试</span>
+      </div>
+      <!-- Data State -->
+      <template v-else-if="weeklyReport">
+        <div class="weekly-stats-row">
+          <div class="weekly-stat-chip">
+            <span class="weekly-stat-val">{{ weeklyReport.studyDays }}</span>
+            <span class="weekly-stat-lbl">学习天</span>
+          </div>
+          <div class="weekly-stat-chip">
+            <span class="weekly-stat-val">{{ weeklyReport.totalWords ?? weeklyReport.totalStudied }}</span>
+            <span class="weekly-stat-lbl">练习词</span>
+          </div>
+          <div class="weekly-stat-chip">
+            <span class="weekly-stat-val">{{ weeklyReport.avgAccuracy }}%</span>
+            <span class="weekly-stat-lbl">正确率</span>
+          </div>
+          <div class="weekly-stat-chip" :class="weeklyReport.accuracyDelta >= 0 ? 'delta-up' : 'delta-down'">
+            <span class="weekly-stat-val">{{ weeklyReport.accuracyDelta >= 0 ? '+' : '' }}{{ weeklyReport.accuracyDelta }}%</span>
+            <span class="weekly-stat-lbl">较上周</span>
+          </div>
+        </div>
+        <div class="weekly-insight-list" v-if="weeklyReport.insights?.length">
+          <div v-for="(item, idx) in weeklyReport.insights.slice(0, 2)" :key="idx" class="weekly-insight-item">
+            <span class="weekly-insight-icon">{{ idx === 0 ? '📝' : '📈' }}</span>
+            <span>{{ item }}</span>
+          </div>
+        </div>
+        <div class="weekly-suggestion" v-if="weeklyReport.suggestion">
+          <span class="weekly-suggestion-icon">💡</span>
+          <span>{{ weeklyReport.suggestion }}</span>
+        </div>
+        <div class="weekly-actions">
+          <button class="weekly-action-btn" @click="router.push('/stats')">
+            查看完整周报 →
+          </button>
+        </div>
+      </template>
+      <!-- Empty State (Monday but no data) -->
+      <div v-else class="weekly-empty">
+        <div class="weekly-empty-icon">📚</div>
+        <div class="weekly-empty-text">本周还没有学习记录</div>
+        <div class="weekly-empty-hint">完成一次学习后，这里会展示你的周报洞察</div>
+        <button class="weekly-action-btn" @click="router.push('/word-select')">
+          开始学习 →
+        </button>
+      </div>
+    </div>
+
     <!-- Learning Modes -->
     <div class="section fade-in-up fade-in-up-delay-3">
       <div class="section-label">学习模式</div>
+      <!-- Smart Session Banner -->
+      <button class="smart-session-banner" @click="openSmartSession">
+        <div class="ss-banner-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
+        </div>
+        <div class="ss-banner-body">
+          <div class="ss-banner-title">智能时段</div>
+          <div class="ss-banner-desc">告诉 TiMo 你有多少分钟，自动编排今日清单</div>
+        </div>
+        <div class="ss-banner-arrow">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </div>
+      </button>
       <div class="mode-list">
         <div class="mode-item" v-for="(mode, i) in modes" :key="mode.name"
+             :class="mode.accent ? `mode-accent-${mode.accent}` : ''"
              :style="{ animationDelay: (0.3 + i * 0.06) + 's' }"
              @click="$router.push(mode.route)">
           <div class="mode-icon">
@@ -153,7 +240,7 @@
     </div>
 
     <!-- Mode Selection Dialog -->
-    <el-dialog v-model="showModeDialog" title="选择学习模式" width="380px" :show-close="true" class="mode-dialog">
+    <el-dialog v-model="showModeDialog" title="选择学习模式" width="480px" :show-close="true" class="mode-dialog">
       <div class="mode-dialog-options">
         <button class="mode-dialog-btn" :class="{ active: selectedGlobalMode === 'quick_memory' }" @click="selectedGlobalMode = 'quick_memory'">
           <span class="mode-emoji">&#x26A1;</span>
@@ -170,10 +257,75 @@
           <span class="mode-dialog-name">统一复习</span>
           <span class="mode-dialog-desc">智能检测</span>
         </button>
+        <button class="mode-dialog-btn" :class="{ active: selectedGlobalMode === 'reverse_recall' }" @click="selectedGlobalMode = 'reverse_recall'">
+          <span class="mode-emoji">&#x270D;&#xFE0F;</span>
+          <span class="mode-dialog-name">中→英召回</span>
+          <span class="mode-dialog-desc">主动召回</span>
+        </button>
       </div>
       <template #footer>
         <el-button @click="showModeDialog = false">取消</el-button>
         <el-button type="primary" @click="confirmStart">开始学习</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Smart Session Dialog -->
+    <el-dialog v-model="showSmartSessionDialog" title="TiMo 智能编排" width="520px" :show-close="true" class="smart-dialog">
+      <div class="smart-section">
+        <div class="smart-section-label">可用时间</div>
+        <div class="smart-time-options">
+          <button
+            v-for="opt in smartTimeOptions"
+            :key="opt"
+            class="smart-time-btn"
+            :class="{ active: smartSelectedMinutes === opt }"
+            @click="selectSmartMinutes(opt)">
+            {{ opt }} 分钟
+          </button>
+        </div>
+      </div>
+
+      <div class="smart-section" v-if="smartLoading">
+        <div class="smart-loading">TiMo 正在编排清单……</div>
+      </div>
+
+      <div class="smart-section" v-else-if="smartError">
+        <div class="smart-error">编排失败，请稍后重试</div>
+      </div>
+
+      <template v-else-if="smartPlan">
+        <div class="smart-section">
+          <div class="smart-summary" v-if="smartPlan.summary">{{ smartPlan.summary }}</div>
+          <div class="smart-fatigue" v-if="smartPlan.fatigueWarning">
+            <span class="smart-fatigue-dot"></span>
+            最近练习较多，已为你切到短时间冲刺
+          </div>
+        </div>
+        <div class="smart-section">
+          <div class="smart-section-label">推荐步骤</div>
+          <div class="smart-steps">
+            <div v-for="(step, idx) in smartPlan.steps" :key="idx" class="smart-step-card">
+              <div class="smart-step-index">{{ idx + 1 }}</div>
+              <div class="smart-step-body">
+                <div class="smart-step-title">
+                  <span class="smart-step-mode">{{ smartModeLabel(step.mode) }}</span>
+                  <span class="smart-step-meta">{{ step.wordCount }} 词 · 约 {{ step.estimatedMinutes }} 分钟</span>
+                </div>
+                <div class="smart-step-reason">{{ step.reason }}</div>
+              </div>
+            </div>
+          </div>
+          <div class="smart-total">合计约 {{ smartPlan.totalEstimatedMinutes }} 分钟</div>
+        </div>
+      </template>
+
+      <template #footer>
+        <el-button @click="showSmartSessionDialog = false">取消</el-button>
+        <el-button type="primary"
+          :disabled="!smartPlan || !smartPlan.steps || smartPlan.steps.length === 0 || smartLoading"
+          @click="startSmartSession">
+          开始
+        </el-button>
       </template>
     </el-dialog>
     </template>
@@ -187,7 +339,7 @@ import { useUserStore } from '../stores/user'
 import { useAgentStore } from '../stores/agent'
 import { useExamPlanStore } from '../stores/examPlan'
 import dayjs from 'dayjs'
-import { getRecommend, getProgressAlert } from '../api/agent'
+import { getRecommend, getProgressAlert, getWeeklyReport, planSmartSession } from '../api/agent'
 import { getOverview } from '../api/statistics'
 import { getExamPlanStatus } from '../api/examPlan'
 import { getNearForgotten } from '../api/review'
@@ -205,6 +357,9 @@ const dailyCompleted = ref(0)
 const mounted = ref(false)
 const loading = ref(true)
 const loadError = ref(false)
+const weeklyReport = ref(null)
+const weeklyLoading = ref(false)
+const weeklyError = ref(false)
 
 const todayStr = dayjs().format('YYYY年M月D日')
 const greeting = computed(() => {
@@ -214,6 +369,8 @@ const greeting = computed(() => {
   if (h < 14) return '下午好'
   return '晚上好'
 })
+const isWeeklyInsightDay = computed(() => dayjs().day() === 1)
+const showWeeklyInsight = computed(() => isWeeklyInsightDay.value && weeklyReport.value)
 
 const modes = [
   {
@@ -233,6 +390,13 @@ const modes = [
     desc: '智能检测，精准复习',
     route: '/review',
     icon: '<path d="M21 12a9 9 0 11-6.22-8.56"/><path d="M21 3v6h-6"/>'
+  },
+  {
+    name: '中→英召回',
+    desc: '主动召回，从释义反向写词',
+    route: '/study/reverse-recall',
+    icon: '<path d="M4 12h14M12 4l8 8-8 8"/><path d="M9 18l-5-6 5-6"/>',
+    accent: 'reverse'
   }
 ]
 
@@ -267,10 +431,74 @@ function onSliderChange() {
 const showModeDialog = ref(false)
 const selectedGlobalMode = ref('quick_memory')
 
+// Smart Session dialog
+const showSmartSessionDialog = ref(false)
+const smartSelectedMinutes = ref(10)
+const smartTimeOptions = [5, 10, 15, 30]
+const smartPlan = ref(null)
+const smartLoading = ref(false)
+const smartError = ref(false)
+
+const SMART_QUEUE_KEY = 'timo_smart_session_queue'
+
+function smartModeLabel(mode) {
+  switch (mode) {
+    case 'quick_memory': return '快速记忆'
+    case 'context_deep': return '语境深度'
+    case 'unified_review': return '统一复习'
+    case 'reverse_recall': return '中→英召回'
+    default: return mode
+  }
+}
+
+async function fetchSmartPlan(minutes) {
+  smartLoading.value = true
+  smartError.value = false
+  smartPlan.value = null
+  try {
+    const res = await planSmartSession(minutes)
+    smartPlan.value = res.data
+  } catch {
+    smartError.value = true
+  } finally {
+    smartLoading.value = false
+  }
+}
+
+async function openSmartSession() {
+  showSmartSessionDialog.value = true
+  // Reset to default 10 min each open
+  smartSelectedMinutes.value = 10
+  await fetchSmartPlan(smartSelectedMinutes.value)
+}
+
+async function selectSmartMinutes(minutes) {
+  smartSelectedMinutes.value = minutes
+  await fetchSmartPlan(minutes)
+}
+
+function startSmartSession() {
+  const plan = smartPlan.value
+  if (!plan || !plan.steps || plan.steps.length === 0) return
+  const [first, ...rest] = plan.steps
+  // Persist remaining steps for chained flow (consumed by next step pages if they choose to).
+  try {
+    sessionStorage.setItem(SMART_QUEUE_KEY, JSON.stringify(rest))
+  } catch {
+    // sessionStorage may be unavailable (private mode) — non-fatal
+  }
+  showSmartSessionDialog.value = false
+  if (first.navigationUrl) {
+    router.push(first.navigationUrl)
+  }
+}
+
 function confirmStart() {
   showModeDialog.value = false
   if (selectedGlobalMode.value === 'unified_review') {
     router.push('/review')
+  } else if (selectedGlobalMode.value === 'reverse_recall') {
+    router.push('/study/reverse-recall')
   } else {
     router.push({
       path: '/word-select',
@@ -325,11 +553,14 @@ async function loadDashboard() {
   loadError.value = false
   loading.value = true
   try {
-    const [recRes, overviewRes, nearForgottenRes] = await Promise.allSettled([
-      getRecommend(),
-      getOverview(),
-      getNearForgotten()
-    ])
+    const tasks = [getRecommend(), getOverview(), getNearForgotten()]
+    if (isWeeklyInsightDay.value) {
+      weeklyLoading.value = true
+      weeklyError.value = false
+      tasks.push(getWeeklyReport())
+    }
+    const results = await Promise.allSettled(tasks)
+    const [recRes, overviewRes, nearForgottenRes, weeklyRes] = results
     if (recRes.status === 'fulfilled') {
       recommend.value = recRes.value.data
       localNewWords.value = recRes.value.data.dailyNewWords || 15
@@ -358,6 +589,14 @@ async function loadDashboard() {
     if (nearForgottenRes.status === 'fulfilled') {
       nearForgottenWords.value = nearForgottenRes.value.data || []
     }
+    if (weeklyRes?.status === 'fulfilled') {
+      weeklyReport.value = weeklyRes.value.data || null
+    } else if (weeklyRes?.status === 'rejected') {
+      weeklyError.value = true
+    } else if (!isWeeklyInsightDay.value) {
+      weeklyReport.value = null
+    }
+    weeklyLoading.value = false
   } catch {
     loadError.value = true
     recommend.value = { dailyNewWords: 15, dailyReviewWords: 30, suggestedMode: 'quick_memory' }
@@ -459,8 +698,277 @@ onMounted(async () => {
 .stat-label { font-size: 12px; font-weight: 700; color: var(--color-text-secondary); letter-spacing: 0.03em; }
 .stat-divider { width: 1px; height: 36px; background: var(--color-border-lighter); flex-shrink: 0; }
 
+/* === Weekly Insight === */
+.weekly-insight-card { border-left: 3px solid var(--color-primary); }
+.weekly-stats-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.weekly-stat-chip {
+  flex: 1;
+  min-width: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 6px;
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-md);
+  transition: transform 0.2s ease;
+}
+.weekly-stat-chip:hover { transform: translateY(-1px); }
+.weekly-stat-val {
+  font-size: 18px;
+  font-weight: 900;
+  font-family: var(--font-mono);
+  color: var(--color-text-primary);
+  line-height: 1.2;
+}
+.weekly-stat-lbl {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+.delta-up .weekly-stat-val { color: var(--color-success); }
+.delta-down .weekly-stat-val { color: var(--color-danger); }
+.weekly-insight-list { display: flex; flex-direction: column; gap: 8px; }
+.weekly-insight-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-md);
+  color: var(--color-text-regular);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.weekly-insight-icon { flex-shrink: 0; font-size: 14px; }
+.weekly-suggestion {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-bg);
+  color: var(--color-primary-dark);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.6;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.weekly-suggestion-icon { flex-shrink: 0; font-size: 14px; }
+.weekly-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+.weekly-action-btn {
+  padding: 8px 18px;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-primary-dark);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: var(--font-family);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.weekly-action-btn:hover {
+  background: var(--color-primary);
+  color: #fff;
+}
+/* Skeleton */
+.weekly-skeleton { display: flex; flex-direction: column; gap: 12px; }
+.skeleton-row { display: flex; gap: 8px; }
+.skeleton-chip {
+  flex: 1;
+  height: 52px;
+  background: linear-gradient(90deg, var(--color-bg-hover) 25%, var(--color-border-lighter) 50%, var(--color-bg-hover) 75%);
+  background-size: 200% 100%;
+  border-radius: var(--radius-md);
+  animation: shimmer 1.5s infinite;
+}
+.skeleton-line {
+  height: 14px;
+  background: linear-gradient(90deg, var(--color-bg-hover) 25%, var(--color-border-lighter) 50%, var(--color-bg-hover) 75%);
+  background-size: 200% 100%;
+  border-radius: var(--radius-sm);
+  animation: shimmer 1.5s infinite;
+}
+.skeleton-line.short { width: 60%; }
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+/* Error */
+.weekly-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: #FEF0F0;
+  border-radius: var(--radius-md);
+  color: var(--color-danger, #F56C6C);
+  font-size: 13px;
+  font-weight: 600;
+}
+.weekly-error-icon { font-size: 16px; }
+/* Empty */
+.weekly-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 12px;
+  text-align: center;
+}
+.weekly-empty-icon { font-size: 32px; }
+.weekly-empty-text {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--color-text-primary);
+}
+.weekly-empty-hint {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 8px;
+}
+
 /* === Section === */
 .section-label { font-size: 11px; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+
+/* === Smart Session Banner === */
+.smart-session-banner {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  margin-bottom: 12px;
+  background: var(--color-primary);
+  color: #fff;
+  border: 2px solid var(--color-primary-dark, #5a7d5e);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-family: var(--font-family);
+  box-shadow: 0 4px 0 var(--color-primary-dark, #5a7d5e);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.smart-session-banner:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 0 var(--color-primary-dark, #5a7d5e);
+}
+.smart-session-banner:active {
+  transform: translateY(1px);
+  box-shadow: 0 3px 0 var(--color-primary-dark, #5a7d5e);
+}
+.ss-banner-icon {
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+.ss-banner-body { flex: 1; text-align: left; }
+.ss-banner-title { font-size: 15px; font-weight: 800; letter-spacing: 0.01em; }
+.ss-banner-desc { font-size: 12px; font-weight: 600; opacity: 0.92; margin-top: 2px; }
+.ss-banner-arrow { flex-shrink: 0; opacity: 0.85; }
+
+/* === Smart Session Dialog === */
+.smart-dialog :deep(.el-dialog) { border-radius: var(--radius-xl); }
+.smart-section { margin-bottom: 16px; }
+.smart-section:last-child { margin-bottom: 0; }
+.smart-section-label { font-size: 12px; font-weight: 800; color: var(--color-text-secondary); margin-bottom: 8px; letter-spacing: 0.04em; }
+.smart-time-options { display: flex; gap: 8px; flex-wrap: wrap; }
+.smart-time-btn {
+  flex: 1;
+  min-width: 70px;
+  padding: 10px 14px;
+  border: 2px solid var(--color-border-lighter);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-family);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 0 var(--color-border-lighter);
+}
+.smart-time-btn:hover { background: var(--color-primary-bg); border-color: var(--color-primary-lighter); }
+.smart-time-btn.active {
+  background: var(--color-primary-bg);
+  border-color: var(--color-primary);
+  color: var(--color-primary-dark);
+  box-shadow: 0 2px 0 var(--color-primary-dark, #5a7d5e);
+}
+.smart-loading { padding: 14px; text-align: center; color: var(--color-text-muted); font-size: 13px; font-weight: 600; }
+.smart-error { padding: 12px; background: #FEF0F0; color: var(--color-danger, #F56C6C); font-size: 13px; font-weight: 600; border-radius: var(--radius-md); text-align: center; }
+.smart-summary {
+  padding: 10px 12px;
+  background: var(--color-primary-bg);
+  color: var(--color-primary-dark);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.smart-fatigue {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: #FFF7E6;
+  color: #B26A00;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 700;
+}
+.smart-fatigue-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #FFA200;
+}
+.smart-steps { display: flex; flex-direction: column; gap: 8px; }
+.smart-step-card {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border-lighter);
+  border-radius: var(--radius-md);
+}
+.smart-step-index {
+  width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--color-primary);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.smart-step-body { flex: 1; }
+.smart-step-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.smart-step-mode { font-size: 14px; font-weight: 800; color: var(--color-text-primary); }
+.smart-step-meta { font-size: 11px; color: var(--color-text-muted); font-weight: 600; font-family: var(--font-mono); }
+.smart-step-reason { font-size: 12px; color: var(--color-text-secondary); font-weight: 600; margin-top: 2px; line-height: 1.5; }
+.smart-total {
+  margin-top: 10px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
 
 /* === Mode List === */
 .mode-list { display: flex; flex-direction: column; gap: 8px; }
@@ -473,6 +981,11 @@ onMounted(async () => {
 .mode-desc { font-size: 12px; color: var(--color-text-secondary); font-weight: 600; }
 .mode-arrow { color: var(--color-text-muted); flex-shrink: 0; opacity: 0; transform: translateX(-4px); transition: opacity 0.25s ease, transform 0.25s ease; }
 .mode-item:hover .mode-arrow { opacity: 1; transform: translateX(0); }
+
+/* Reverse-recall accent — distinct teal/purple so the 4th mode is visually separable */
+.mode-accent-reverse { border-color: #c7d2e8; box-shadow: 0 3px 0 #c7d2e8; }
+.mode-accent-reverse .mode-icon { color: #6b6dd9; }
+.mode-accent-reverse:hover { box-shadow: 0 5px 0 #b6c1d8; }
 
 /* === Suggestion === */
 .suggestion-label { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 800; color: var(--color-text-regular); }

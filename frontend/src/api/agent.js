@@ -31,3 +31,15 @@ export function getProgressAlert() {
 export function analyzeWord(word) {
   return request.post('/agent/analyze-word', { word })
 }
+
+export function getSessionReport(data) {
+  return request.post('/agent/session-report', data)
+}
+
+export function planSmartSession(availableMinutes = 10) {
+  return request.post('/agent/smart-session/plan', { availableMinutes })
+}
+
+export function evaluateRealtimeNudge(studyMode) {
+  return request.post('/agent/realtime-nudge', { studyMode })
+}

@@ -125,6 +125,14 @@
               {{ analyzing ? '分析中...' : '让 TiMo 帮你分析这个词' }}
             </button>
             <div v-if="wordAnalysis" class="analysis-content">
+              <div class="analysis-item" v-if="wordAnalysis.phonetic">
+                <span class="analysis-label">&#x1F524; 音标</span>
+                <span class="analysis-text">{{ wordAnalysis.phonetic }}</span>
+              </div>
+              <div class="analysis-item" v-if="wordAnalysis.meaning">
+                <span class="analysis-label">&#x1F4CC; 核心词义</span>
+                <span class="analysis-text">{{ wordAnalysis.meaning }}</span>
+              </div>
               <div class="analysis-item" v-if="wordAnalysis.etymology">
                 <span class="analysis-label">&#x1F333; 词根词缀</span>
                 <span class="analysis-text">{{ wordAnalysis.etymology }}</span>
@@ -233,7 +241,7 @@ async function loadWords() {
     })
     wordList.value = res.data.content
     total.value = res.data.totalElements
-  } catch (e) { /* handled */ } finally {
+  } catch { ElMessage.warning('单词列表加载失败') } finally {
     loading.value = false
   }
 }

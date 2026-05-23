@@ -9,7 +9,9 @@ import java.time.LocalDateTime;
 
 @Data
 @Entity
-@Table(name = "chat_sessions")
+@Table(name = "chat_sessions", indexes = {
+        @Index(name = "idx_chat_session_user", columnList = "user_id")
+})
 public class ChatSession {
 
     @Id

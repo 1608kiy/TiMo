@@ -98,35 +98,87 @@
               </el-button>
             </div>
           </template>
-          <div v-if="weeklyReport" class="report-content">
-            <div class="report-section">
-              <div class="report-title">&#x1F4CA; 本周概览</div>
-              <div class="report-stats">
-                <div class="report-stat">
-                  <span class="report-stat-value">{{ weeklyReport.totalWords }}</span>
-                  <span class="report-stat-label">学习单词</span>
+            <div v-if="weeklyReport" class="report-content">
+              <div class="report-hero">
+                <div class="report-hero-text">{{ weeklyReport.summary }}</div>
+                <div class="report-hero-meta">
+                  <span v-if="weeklyReport.studyDays">📅 {{ weeklyReport.studyDays }} 天学习</span>
+                  <span v-if="weeklyReport.longestStreak">🔥 连续打卡 {{ weeklyReport.longestStreak }} 天</span>
                 </div>
-                <div class="report-stat">
-                  <span class="report-stat-value">{{ weeklyReport.masteredWords }}</span>
-                  <span class="report-stat-label">已掌握</span>
+              </div>
+              <div class="report-section">
+                <div class="report-title">&#x1F4CA; 本周概览</div>
+                <div class="report-stats">
+                  <div class="report-stat">
+                    <span class="report-stat-value">{{ weeklyReport.totalWords ?? weeklyReport.totalStudied }}</span>
+                    <span class="report-stat-label">学习单词</span>
+                  </div>
+                  <div class="report-stat">
+                    <span class="report-stat-value">{{ weeklyReport.masteredWords }}</span>
+                    <span class="report-stat-label">已掌握</span>
+                  </div>
+                  <div class="report-stat">
+                    <span class="report-stat-value">{{ weeklyReport.avgAccuracy }}%</span>
+                    <span class="report-stat-label">平均正确率</span>
+                  </div>
+                  <div class="report-stat" :class="weeklyReport.accuracyDelta >= 0 ? 'delta-up' : 'delta-down'">
+                    <span class="report-stat-value">{{ weeklyReport.accuracyDelta >= 0 ? '+' : '' }}{{ weeklyReport.accuracyDelta }}%</span>
+                    <span class="report-stat-label">较上周</span>
+                  </div>
                 </div>
-                <div class="report-stat">
-                  <span class="report-stat-value">{{ weeklyReport.avgAccuracy }}%</span>
-                  <span class="report-stat-label">平均正确率</span>
+              </div>
+              <div class="report-section" v-if="weeklyReport.insights?.length">
+                <div class="report-title">&#x1F50E; 数据洞察</div>
+                <div class="report-insight-list">
+                  <div v-for="(item, idx) in weeklyReport.insights" :key="idx" class="report-insight-item">
+                    <span class="report-insight-icon">{{ idx === 0 ? '📝' : (item.includes('提升') ? '📈' : item.includes('下降') ? '📉' : '🎯') }}</span>
+                    <span>{{ item }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="report-section" v-if="weeklyReport.suggestion">
+                <div class="report-title">&#x1F4A1; TiMo 建议</div>
+                <div class="report-text">{{ weeklyReport.suggestion }}</div>
+              </div>
+              <div class="report-section report-section-weakness" v-if="weeklyReport.weakness">
+                <div class="report-title">&#x1F525; 薄弱环节</div>
+                <div class="report-text">{{ weeklyReport.weakness }}</div>
+              </div>
+              <!-- Wave 6 Feature B — 学习节律（仅当时段分析有数据时展示） -->
+              <div class="report-section report-section-rhythm" v-if="weeklyReport.timeAnalysis">
+                <div class="report-title">&#x1F551; 学习节律</div>
+                <div class="rhythm-content">
+                  <div class="rhythm-hero">
+                    <div class="rhythm-hero-hour">{{ weeklyReport.timeAnalysis.bestHourRange }}</div>
+                    <div class="rhythm-hero-acc">{{ Math.round(weeklyReport.timeAnalysis.bestHourAccuracy * 100) }}%</div>
+                    <div class="rhythm-hero-label">最佳正确率时段</div>
+                  </div>
+                  <div class="rhythm-meta">
+                    <div class="rhythm-meta-item" v-if="weeklyReport.timeAnalysis.worstHourRange">
+                      <span class="rhythm-meta-icon">&#x1F4C9;</span>
+                      <span class="rhythm-meta-label">最差时段</span>
+                      <span class="rhythm-meta-value">{{ weeklyReport.timeAnalysis.worstHourRange }}（{{ Math.round(weeklyReport.timeAnalysis.worstHourAccuracy * 100) }}%）</span>
+                    </div>
+                    <div class="rhythm-meta-item" v-if="weeklyReport.timeAnalysis.avgSessionLengthMinutes">
+                      <span class="rhythm-meta-icon">&#x23F1;&#xFE0F;</span>
+                      <span class="rhythm-meta-label">平均会话</span>
+                      <span class="rhythm-meta-value">{{ weeklyReport.timeAnalysis.avgSessionLengthMinutes }} 分钟</span>
+                    </div>
+                  </div>
+                  <div class="rhythm-recommend" v-if="weeklyReport.timeAnalysis.recommendation">
+                    <span class="rhythm-recommend-icon">&#x1F4A1;</span>
+                    {{ weeklyReport.timeAnalysis.recommendation }}
+                  </div>
                 </div>
               </div>
             </div>
-            <div class="report-section" v-if="weeklyReport.suggestion">
-              <div class="report-title">&#x1F4A1; TiMo 建议</div>
-              <div class="report-text">{{ weeklyReport.suggestion }}</div>
-            </div>
-            <div class="report-section" v-if="weeklyReport.weakness">
-              <div class="report-title">&#x1F525; 薄弱环节</div>
-              <div class="report-text">{{ weeklyReport.weakness }}</div>
-            </div>
-          </div>
           <div v-else class="report-empty">
-            点击"生成周报"获取本周学习分析
+            <div class="report-empty-icon">📊</div>
+            <div class="report-empty-title">{{ isMonday ? '周报生成中...' : '周报尚未生成' }}</div>
+            <div class="report-empty-hint">{{ isMonday ? '点击上方按钮获取本周学习分析' : '每周一可生成本周学习周报' }}</div>
+            <el-button v-if="isMonday" type="primary" size="small" @click="generateWeeklyReport" :loading="reportLoading" style="margin-top: 8px;">
+              生成周报
+            </el-button>
           </div>
         </el-card>
       </el-col>
@@ -141,6 +193,7 @@ import TiMoFAB from '../components/agent/TiMoFAB.vue'
 import { ElMessage } from 'element-plus'
 import { useAgentStore } from '../stores/agent'
 import { useUserStore } from '../stores/user'
+import dayjs from 'dayjs'
 
 const agentStore = useAgentStore()
 const userStore = useUserStore()
@@ -186,6 +239,7 @@ const timeRange = ref(7)
 const forgettingExpanded = ref(true)
 const reportLoading = ref(false)
 const weeklyReport = ref(null)
+const isMonday = dayjs().day() === 1
 
 const retentionOption = ref({})
 const dailyOption = ref({})
@@ -349,11 +403,16 @@ onMounted(async () => {
   }
 
   const days = timeRange.value
-  const [overviewRes, retentionRes, dailyRes, heatmapRes, reactionRes, weakRes, forgettingRes] =
+  const [overviewRes, retentionRes, dailyRes, heatmapRes, reactionRes, weakRes, forgettingRes, weeklyRes] =
     await Promise.allSettled([
       getOverview(), getRetention(days), getDailyStats(days),
-      getHeatmap(), getReactionTime(days), getWeakWords(), getForgettingCurve(days)
+      getHeatmap(), getReactionTime(days), getWeakWords(), getForgettingCurve(days),
+      ...(isMonday ? [getWeeklyReport()] : [Promise.resolve(null)])
     ])
+
+  if (weeklyRes?.status === 'fulfilled' && weeklyRes.value) {
+    weeklyReport.value = weeklyRes.value.data
+  }
 
   if (overviewRes.status === 'fulfilled') {
     const d = overviewRes.value.data
@@ -471,18 +530,96 @@ onMounted(async () => {
 .report-header { display: flex; justify-content: space-between; align-items: center; }
 .report-header span { font-weight: 800; font-size: 15px; color: var(--color-text-primary); }
 .report-content { display: flex; flex-direction: column; gap: 16px; }
+.report-hero {
+  padding: 16px 20px;
+  background: linear-gradient(135deg, var(--color-primary-bg) 0%, var(--color-bg-hover) 100%);
+  border-radius: var(--radius-md);
+  border-left: 4px solid var(--color-primary);
+}
+.report-hero-text {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--color-text-primary);
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+.report-hero-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
 .report-section {
   padding: 12px; background: var(--color-bg-hover);
   border-radius: var(--radius-md); border-left: 3px solid var(--color-primary);
+}
+.report-section-weakness {
+  border-left-color: var(--color-warning, #E6A23C);
 }
 .report-title { font-size: 13px; font-weight: 800; color: var(--color-primary-dark); margin-bottom: 8px; }
 .report-stats { display: flex; justify-content: space-around; gap: 12px; }
 .report-stat { display: flex; flex-direction: column; align-items: center; }
 .report-stat-value { font-size: 20px; font-weight: 900; font-family: var(--font-mono); color: var(--color-text-primary); }
 .report-stat-label { font-size: 11px; font-weight: 700; color: var(--color-text-secondary); margin-top: 2px; }
+.delta-up .report-stat-value { color: var(--color-success, #67C23A); }
+.delta-down .report-stat-value { color: var(--color-danger, #F56C6C); }
+.report-insight-list { display: flex; flex-direction: column; gap: 8px; }
+.report-insight-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-regular);
+  line-height: 1.6;
+}
+.report-insight-icon { flex-shrink: 0; font-size: 14px; }
 .report-text { font-size: 13px; font-weight: 600; color: var(--color-text-regular); line-height: 1.6; }
 .report-empty {
-  text-align: center; padding: 24px; color: var(--color-text-muted);
+  text-align: center; padding: 32px 24px; color: var(--color-text-muted);
   font-size: 13px; font-weight: 600;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
 }
+.report-empty-icon { font-size: 36px; }
+.report-empty-title { font-size: 15px; font-weight: 800; color: var(--color-text-primary); }
+.report-empty-hint { font-size: 12px; font-weight: 600; color: var(--color-text-secondary); }
+
+/* Wave 6 Feature B — 学习节律 */
+.report-section-rhythm {
+  border-left-color: var(--color-purple, #CE82FF);
+}
+.rhythm-content { display: flex; flex-direction: column; gap: 12px; }
+.rhythm-hero {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #F3E5F5 0%, #E1BEE7 100%);
+  border-radius: var(--radius-md);
+}
+.rhythm-hero-hour {
+  font-size: 24px; font-weight: 900; color: #6A1B9A;
+  font-family: var(--font-mono);
+}
+.rhythm-hero-acc {
+  font-size: 22px; font-weight: 900; color: var(--color-primary-dark, #2E7D32);
+  font-family: var(--font-mono);
+}
+.rhythm-hero-label {
+  font-size: 12px; font-weight: 700; color: var(--color-text-secondary);
+  margin-left: auto;
+}
+.rhythm-meta { display: flex; gap: 16px; flex-wrap: wrap; }
+.rhythm-meta-item {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 600; color: var(--color-text-regular);
+}
+.rhythm-meta-icon { font-size: 14px; }
+.rhythm-meta-label { color: var(--color-text-secondary); font-weight: 700; }
+.rhythm-meta-value { color: var(--color-text-primary); }
+.rhythm-recommend {
+  display: flex; align-items: flex-start; gap: 6px;
+  font-size: 13px; font-weight: 600; color: var(--color-text-regular);
+  line-height: 1.6;
+}
+.rhythm-recommend-icon { flex-shrink: 0; font-size: 14px; }
 </style>

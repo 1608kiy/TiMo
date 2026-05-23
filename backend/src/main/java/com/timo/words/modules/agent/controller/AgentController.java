@@ -111,4 +111,34 @@ public class AgentController {
             Authentication authentication) {
         return Result.success(agentService.analyzeWord(request.getWord()));
     }
+
+    @Operation(summary = "获取学习完成总结（教练点评）")
+    @PostMapping("/session-report")
+    public Result<AgentService.SessionReportResponse> getSessionReport(
+            @Valid @RequestBody AgentService.SessionReportRequest request,
+            Authentication authentication) {
+        return Result.success(agentService.generateSessionReport(request));
+    }
+
+    @Operation(summary = "智能时段：根据可用时间编排今日学习清单")
+    @PostMapping("/smart-session/plan")
+    public Result<AgentService.SmartSessionPlanDTO> planSmartSession(
+            Authentication authentication,
+            @RequestBody(required = false) AgentService.SmartSessionRequest request) {
+        Long userId = (Long) authentication.getPrincipal();
+        int available = request != null ? request.getAvailableMinutes() : 0;
+        if (available <= 0) available = 10; // default
+        if (available > 60) available = 60; // clamp upper
+        return Result.success(agentService.planSmartSession(userId, available));
+    }
+
+    @Operation(summary = "实时介入：根据最近 5 分钟错词模式返回 TiMo 提醒（无规律时 data=null）")
+    @PostMapping("/realtime-nudge")
+    public Result<AgentService.RealtimeNudgeDTO> evaluateRealtimeNudge(
+            Authentication authentication,
+            @RequestBody(required = false) AgentService.NudgeRequest request) {
+        Long userId = (Long) authentication.getPrincipal();
+        String studyMode = request != null ? request.getStudyMode() : null;
+        return Result.success(agentService.evaluateRealtimeNudge(userId, studyMode).orElse(null));
+    }
 }

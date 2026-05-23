@@ -90,7 +90,7 @@
         </button>
       </div>
 
-      <!-- 阶段2: 闪电验证 — 二选一释义 -->
+      <!-- 阶段2: 闪电验证 — 四选一释义（3 秒倒计时） -->
       <div v-if="phase === 'verify'" class="action-bar verify-bar">
         <div class="verify-timer-bar">
           <div class="verify-timer-fill" :class="timerClass" :style="{ width: timerPercent + '%' }"></div>
@@ -153,9 +153,17 @@
             <span class="done-stat-label">用时</span>
           </div>
         </div>
-        <div class="done-extra">
-          <span>错词数: {{ finalWrongWords.length }}</span>
-        </div>
+          <div class="done-extra">
+            <span>错词数：{{ finalWrongWords.length }}</span>
+          </div>
+          <!-- TiMo Coach Summary -->
+          <div v-if="coachSummary" class="coach-summary">
+            <div class="coach-header">
+              <span class="coach-icon">&#x1F9D1;&#x200D;&#x1F3EB;</span>
+              <span class="coach-label">TiMo 教练点评</span>
+            </div>
+            <p class="coach-text">{{ coachSummary }}</p>
+          </div>
         <!-- 易错词列表 -->
         <div v-if="finalWrongWords.length" class="wrong-words-section">
           <div class="wrong-words-title">&#x1F525; 易错词</div>
@@ -185,9 +193,10 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElNotification } from 'element-plus'
 import { getWordBatch } from '../api/words'
 import { submitQuickMemory } from '../api/study'
+import { getSessionReport, evaluateRealtimeNudge } from '../api/agent'
 import { useStudyStore } from '../stores/study'
 import { useAgentStore } from '../stores/agent'
 import { useUserStore } from '../stores/user'
@@ -231,6 +240,7 @@ const countdown = ref(3)
 const lastCorrect = ref(false)
 const lastResultType = ref('') // 'correct' | 'wrong' | 'timeout' | 'unknown'
 const sessionDone = ref(false)
+const coachSummary = ref('')
 const startTime = ref(Date.now())
 const elapsedMs = ref(0)
 const sessionStartTime = ref(Date.now())
@@ -251,6 +261,10 @@ const finalWrongWords = ref([])
 
 // Scenario 1: Agent intervention — track stubborn words needing deep learning
 const suggestDeepLearningWords = ref([]) // words with consecutiveErrors >= 3
+
+// Wave 6 Feature A — realtime nudge state
+const recentFailures = ref(0)   // 连续失败计数（用于触发实时介入）
+const nudgeShown = ref(false)   // 一次 session 内最多弹一次，避免骚扰
 
 const { progress, setSessionQueue, updateProgress } = studyStore
 
@@ -446,7 +460,13 @@ function verify(idx) {
 
 // 记录并提交单个结果
 async function recordResult(word, recognized, verifiedCorrect, reactionMs) {
-  // 计算 grade: 认识+验证正确=4.0, 认识+验证错误=2.0, 不认识=1.0
+  // grade 由后端根据 RT 5 档评分：
+  //   不认识 → 1.0
+  //   认识 + 验证错 → 2.0
+  //   认识 + 验证对 + RT > 2500ms → 3.0
+  //   认识 + 验证对 + 1500 < RT ≤ 2500 → 3.5
+  //   认识 + 验证对 + RT ≤ 1500ms → 4.0
+  // 前端仅上报原始信号 (recognized / verifiedCorrect / reactionTimeMs)。
   const grade = recognized ? (verifiedCorrect ? 4.0 : 2.0) : 1.0
   try {
     const res = await submitQuickMemory({
@@ -475,6 +495,34 @@ async function recordResult(word, recognized, verifiedCorrect, reactionMs) {
     reactionTimeMs: reactionMs,
     repeat_error: isRepeatPhase.value
   })
+
+  // Wave 6 Feature A — 失败累计 / 实时介入
+  if (grade < 3.0) {
+    recentFailures.value++
+    if (recentFailures.value >= 3 && !nudgeShown.value) {
+      nudgeShown.value = true
+      maybeShowRealtimeNudge('quick_memory')
+    }
+  } else {
+    recentFailures.value = 0
+  }
+}
+
+// Wave 6 Feature A — 调用后端实时介入接口（返回空时静默）
+async function maybeShowRealtimeNudge(studyMode) {
+  try {
+    const res = await evaluateRealtimeNudge(studyMode)
+    const data = res?.data
+    if (data && data.message) {
+      ElNotification({
+        title: 'TiMo 小提示',
+        message: data.message,
+        type: 'warning',
+        position: 'top-right',
+        duration: 8000
+      })
+    }
+  } catch { /* nudge 是辅助功能，失败静默 */ }
 }
 
 function nextWord() {
@@ -519,7 +567,29 @@ function endSession() {
   sessionStorage.removeItem(STORAGE_KEY)
   finalWrongWords.value = words.value.filter(w => firstPassWrongIds.value.has(w.id))
 
-  // Scenario 1: Agent intervention — suggest deep learning for stubborn words
+  // Generate TiMo coach summary
+  try {
+    getSessionReport({
+      studyMode: 'quick_memory',
+      totalWords: sessionResults.value.length,
+      correctCount: correctCount.value,
+      wrongCount: sessionResults.value.length - correctCount.value,
+      elapsedMs: elapsedMs.value,
+      wordTexts: words.value.map(w => w.word),
+      wrongWordTexts: finalWrongWords.value.map(w => w.word)
+    }).then(res => {
+      if (res.data?.summary) {
+        coachSummary.value = res.data.summary
+        // Also push to TiMo chat for continuity
+        agentStore.addMessage({ role: 'assistant', content: res.data.summary, actions: res.data.actions || [] })
+        if (res.data.tiMoState) {
+          agentStore.setTiMoState(res.data.tiMoState, 5000)
+        }
+      }
+    }).catch(() => { /* summary is non-critical */ })
+  } catch { /* ignore */ }
+
+  // Scenario 1: Agent intervention → suggest deep learning for stubborn words
   if (suggestDeepLearningWords.value.length > 0) {
     triggerDeepLearningSuggestion()
   }
@@ -557,6 +627,8 @@ function retryWrong() {
   phase.value = 'decide'
   sessionResults.value = []
   suggestDeepLearningWords.value = []
+  recentFailures.value = 0
+  nudgeShown.value = false
   studyStore.resetSession()
   setSessionQueue(words.value)
   startTime.value = Date.now()
@@ -840,6 +912,7 @@ onBeforeUnmount(() => {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes bounceIn { 0%{transform:scale(0.3);opacity:0} 50%{transform:scale(1.05)} 100%{transform:scale(1);opacity:1} }
+@keyframes fadeSlideUp { 0%{opacity:0;transform:translateY(10px)} 100%{opacity:1;transform:translateY(0)} }
 
 .session-done { padding-top: 20px; }
 
@@ -877,9 +950,21 @@ onBeforeUnmount(() => {
   background: #fff; border-radius: var(--radius-sm);
 }
 .wrong-word-text { font-weight: 800; font-size: 14px; color: var(--color-text-primary); min-width: 80px; }
-.wrong-word-meaning { font-size: 13px; color: var(--color-text-secondary); }
+  .wrong-word-meaning { font-size: 13px; color: var(--color-text-secondary); }
 
-.done-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  /* TiMo 教练点评 */
+  .coach-summary {
+    margin-bottom: 20px; padding: 14px 16px;
+    background: linear-gradient(135deg, #E3F2FD, #BBDEFB);
+    border: 2px solid #2196F3; border-radius: var(--radius-md);
+    text-align: left; animation: fadeSlideUp 0.4s ease;
+  }
+  .coach-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .coach-icon { font-size: 18px; }
+  .coach-label { font-size: 13px; font-weight: 800; color: #1565C0; }
+  .coach-text { font-size: 14px; color: var(--color-text-primary); line-height: 1.6; margin: 0; }
+
+  .done-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 
 /* 离线横幅 */
 .offline-banner {

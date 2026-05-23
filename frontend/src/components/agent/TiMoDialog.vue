@@ -104,6 +104,15 @@
           </template>
         </el-input>
       </div>
+
+      <el-dialog v-model="nicknameDialogVisible" title="先认识一下" width="360px" :append-to-body="true">
+        <p class="nickname-tip">你希望我怎么称呼你？</p>
+        <el-input v-model="nicknameInput" placeholder="比如：小王、学长、同学" maxlength="20" />
+        <template #footer>
+          <el-button @click="skipNickname">先跳过</el-button>
+          <el-button type="primary" :disabled="!nicknameInput.trim()" @click="saveNickname">保存称呼</el-button>
+        </template>
+      </el-dialog>
     </div>
   </div>
 </template>
@@ -117,14 +126,19 @@ import { startExamPlanDialog, continueExamPlanDialog } from '../../api/examPlan'
 import TiMoAvatar from './TiMoAvatar.vue'
 import { Close } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
+import { useUserStore } from '../../stores/user'
+import { updatePreferences } from '../../api/user'
 
 const router = useRouter()
 const agentStore = useAgentStore()
 const examPlanStore = useExamPlanStore()
+const userStore = useUserStore()
 const inputText = ref('')
 const messagesRef = ref(null)
 const dialoguing = ref(false)
 const currentOptions = ref([])
+const nicknameDialogVisible = ref(false)
+const nicknameInput = ref('')
 
 const dialogStyle = computed(() => {
   const rect = agentStore.fabRect
@@ -223,7 +237,12 @@ function handleAction(action) {
     router.push('/quick-memory')
     agentStore.toggleDialog()
   } else if (action.includes('深度学习')) {
-    router.push('/deep-learning')
+    if (agentStore._pendingDeepLearningWordIds) {
+      router.push({ path: '/deep-learning', query: { words: agentStore._pendingDeepLearningWordIds } })
+      delete agentStore._pendingDeepLearningWordIds
+    } else {
+      router.push('/deep-learning')
+    }
     agentStore.toggleDialog()
   } else if (action.includes('周报')) {
     inputText.value = '给我看周报'
@@ -361,6 +380,30 @@ function sendStarter(text) {
   sendMessage()
 }
 
+function ensureNicknamePrompt() {
+  const hasNickname = !!userStore.userInfo?.nickname
+  if (!hasNickname && !nicknameDialogVisible.value) {
+    nicknameDialogVisible.value = true
+  }
+}
+
+async function saveNickname() {
+  const nickname = nicknameInput.value.trim()
+  if (!nickname) return
+  try {
+    await updatePreferences({ nickname })
+    userStore.userInfo = { ...(userStore.userInfo || {}), nickname }
+    nicknameDialogVisible.value = false
+    agentStore.addMessage({ role: 'assistant', content: `好呀，那我以后就叫你“${nickname}”了。` })
+  } catch {
+    agentStore.addMessage({ role: 'assistant', content: '保存称呼时出了点问题，你也可以先直接和我聊天。' })
+  }
+}
+
+function skipNickname() {
+  nicknameDialogVisible.value = false
+}
+
 // Expose startExamPlan for parent components
 defineExpose({ startExamPlan })
 
@@ -375,12 +418,14 @@ function tryStartExamPlan() {
 onMounted(() => {
   tryStartExamPlan()
   fetchHistory()
+  ensureNicknamePrompt()
 })
 
 watch(() => agentStore.isOpen, (open) => {
   if (open) {
     tryStartExamPlan()
     fetchHistory()
+    ensureNicknamePrompt()
   }
 })
 

@@ -52,8 +52,10 @@
 
     <!-- 复习中 -->
     <div v-if="currentWord && !sessionDone" class="review-area">
-      <!-- 顽固词标记 -->
-      <div v-if="currentWord.stubborn" class="stubborn-badge">&#x1F525; 顽固词</div>
+      <!-- 顽固词标记 — 显示连续错误次数（如果可用） -->
+      <div v-if="currentWord.stubborn" class="stubborn-badge">
+        &#x1F525; 这个词难倒过你<span v-if="currentWord.consecutiveErrors">{{ ' ' + currentWord.consecutiveErrors + ' 次' }}</span>
+      </div>
 
       <!-- Step 1: 闪电判断 — 认识/不认识（3秒） -->
       <div v-if="step === 1" class="step-content">
@@ -201,10 +203,11 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElNotification } from 'element-plus'
 import { getReviewQueue, submitReviewResult } from '../api/review'
-import { getStubbornWords } from '../api/agent'
+import { getStubbornWords, evaluateRealtimeNudge } from '../api/agent'
 import { useAgentStore } from '../stores/agent'
+import { classifySpelling } from '../utils/string'
 import { useUserStore } from '../stores/user'
 import { useNetwork } from '../composables/useNetwork'
 import { useFatigueCheck } from '../composables/useFatigueCheck'
@@ -278,6 +281,10 @@ const spellingInputRef = ref(null)
 // Per-step timing
 const stepStartTime = ref(0)
 const reactionTimes = ref({ s1: 0, s2: 0, s3: 0 })
+
+// Wave 6 Feature A — realtime nudge state
+const recentFailures = ref(0)   // 连续失败计数
+const nudgeShown = ref(false)   // 一次 session 最多弹一次
 
 const total = computed(() => words.value.length)
 const progressPercent = computed(() => total.value > 0 ? Math.round((completed.value / total.value) * 100) : 0)
@@ -528,8 +535,13 @@ function nextStep() {
 
 // ===== Extra: 拼写补强 =====
 function submitSpelling() {
-  const input = spellingInput.value.trim().toLowerCase()
-  const correct = input === currentWord.value.word.toLowerCase()
+  const classification = classifySpelling(spellingInput.value, currentWord.value.word)
+  // Levenshtein-1 typo is treated as "close enough" — user knew the word,
+  // just slipped a finger. Does NOT trigger stubborn marking in the backend.
+  const correct = classification !== 'wrong'  // accept correct OR typo
+  if (classification === 'typo') {
+    ElMessage.warning('差一个字母：正确是 ' + currentWord.value.word)
+  }
   submitAndNext(true, correct)
 }
 
@@ -549,8 +561,17 @@ function submitAndNext(spellingAttempted, spellingCorrect) {
   })
 
   completed.value++
-  if (stepResults.value.s1 === 5 && stepResults.value.s2 === 5 && stepResults.value.s3 === 5) {
+  const allPassed = stepResults.value.s1 === 5 && stepResults.value.s2 === 5 && stepResults.value.s3 === 5
+  if (allPassed) {
     passed.value++
+    recentFailures.value = 0
+  } else {
+    // Wave 6 Feature A — 失败累计 / 实时介入
+    recentFailures.value++
+    if (recentFailures.value >= 3 && !nudgeShown.value) {
+      nudgeShown.value = true
+      maybeShowRealtimeNudge('unified_review')
+    }
   }
 
   spellingInput.value = ''
@@ -570,6 +591,23 @@ function submitAndNext(spellingAttempted, spellingCorrect) {
     clearAllTimers()
     generateReviewDiagnosis()
   }
+}
+
+// Wave 6 Feature A — 实时介入接口调用（无介入条件时静默）
+async function maybeShowRealtimeNudge(studyMode) {
+  try {
+    const res = await evaluateRealtimeNudge(studyMode)
+    const data = res?.data
+    if (data && data.message) {
+      ElNotification({
+        title: 'TiMo 小提示',
+        message: data.message,
+        type: 'warning',
+        position: 'top-right',
+        duration: 8000
+      })
+    }
+  } catch { /* 实时介入是辅助功能，失败静默 */ }
 }
 
 // TiMo 复习诊断
