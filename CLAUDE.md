@@ -19,7 +19,7 @@ AI Agent-powered adaptive contextual vocabulary learning system for exam prepara
 
 ## Project Status
 
-Stages 1–9 complete (scaffolding, auth, wordbank, FSRS+DF, all 3 learning modes, exam plan, AI Agent, stats/calendar/profile). Stage 10 (integration polish, onboarding, responsive) remains. See `开发进度.md` for details.
+Stages 1–10 complete (scaffolding, auth, wordbank, FSRS+DF, all 3 learning modes, exam plan, AI Agent, stats/calendar/profile, integration polish). Stage 11 (Admin backend system) backend + frontend pages fully implemented; see `ADMIN_PLAN.md` for design. See `开发进度.md` for stage-by-stage progress.
 
 ## Build & Run
 
@@ -68,7 +68,7 @@ Memory  Deep Learn  Review     (dialog-driven)
 
 - FSRS tracks: Difficulty (D), Stability (S), Retrievability (R)
 - `R = exp(ln(0.9) * Δt / S)` — when R drops below threshold, word enters review queue
-- After standard FSRS update: `S_final = S' × DF`, clamped to [0.5, 1.5]
+- After standard FSRS update: `S_final = S' × DF`. DF itself is clamped to [0.5, 1.5] (product of bounded λ factors). `S_final` is floored at 0.1 days to prevent divide-by-zero; **upper bound is effectively unbounded (36500 days)** so successful repetitions extend the interval indefinitely per FSRS design.
 - DF composition varies by mode:
 
 | Mode | DF Formula | λ_rt | λ_acc | λ_skip |
@@ -108,7 +108,8 @@ com.timo.words
 │   ├── review      # Review queue (next_review_time <= now), stubborn word callbacks
 │   ├── agent       # Chat sessions/messages, dynamic question generation, recommendations, weekly reports
 │   ├── statistics  # Dashboard data (overview, retention, forgetting curve, heatmap, reaction time, weak words)
-│   └── calendar    # Check-in records, monthly view
+│   ├── calendar    # Check-in records, monthly view
+│   └── admin       # Super-admin backoffice: dashboard, user management, word import, AI provider config + call logs, system config, operation logs, DataInitializer (seeds super-admin + default AI provider from env vars)
 ├── algorithm/
 │   ├── fsrs        # Scheduler class: review(word, grade, studyMode) → updated S, D, R, next_review_time
 │   ├── df          # DynamicForgettingFactor: lambda_rt, lambda_acc, lambda_skip_custom
@@ -132,15 +133,30 @@ com.timo.words
 
 **Statistics:** `GET /api/statistics/overview`, `GET /api/statistics/forgetting-curve`, `GET /api/statistics/heatmap`, `GET /api/statistics/weak-words`
 
-Full endpoint list: 9 modules, ~30 endpoints. See `文档/后端规划.txt` §四.
+**Admin** (requires `role=ADMIN` or `SUPER_ADMIN` in JWT; some routes are `SUPER_ADMIN`-only):
+- Auth: `POST /api/admin/auth/verify-secret`, `POST /api/admin/auth/impersonate/{userId}`, `POST /api/admin/auth/exit-impersonate`
+- Dashboard: `GET /api/admin/dashboard/overview`, `GET /api/admin/dashboard/trend`
+- Users: `GET /api/admin/users` (paged, search, role/status filter), `PUT /api/admin/users/{id}/role`, `PUT /api/admin/users/{id}/status`, `DELETE /api/admin/users/{id}`
+- Words: `GET|POST|PUT|DELETE /api/admin/words[/{id}]`, `POST /api/admin/words/import`, `DELETE /api/admin/words/by-exam-type`
+- AI: `GET|POST|PUT|DELETE /api/admin/ai/providers[/{id}]`, `PUT /api/admin/ai/providers/{id}/activate`, `GET /api/admin/ai/logs`, `GET /api/admin/ai/stats`
+- System: `GET|PUT /api/admin/system/config[/{key}]`
+- Logs: `GET /api/admin/logs` (operation audit trail)
+
+Full endpoint list: 10 modules, ~50 endpoints. See `文档/后端规划.txt` §四 and `ADMIN_PLAN.md` §四.2.
 
 ## Database Key Tables
 
+- `users` — adds `role` (`USER`/`ADMIN`/`SUPER_ADMIN`), `status` (`ACTIVE`/`BANNED`), `last_login_at`
 - `user_word_bind` — per-user per-word FSRS state (D, S, R, next_review_time, is_stubborn, consecutive_errors)
 - `quiz_records` — learning event log (study_mode, grade 1.0~4.0, composite_grade, step_results JSON, hint_total, reaction_time_ms, source)
 - `conversation_quiz_log` — isolated conversation practice records (does NOT feed FSRS)
 - `chat_sessions` / `chat_messages` — Agent dialog with card_data and suggested_actions JSON
 - `stubborn_log` — mark/unmark history for stubborn words
+- `ai_provider_config` — pluggable AI provider configs (DeepSeek/OpenAI/Qwen/Zhipu), only one `is_active` at a time
+- `ai_call_log` — every AI request: provider, model, tokens, latency, status (`SUCCESS`/`FAILED`/`CIRCUIT_OPEN`)
+- `system_config` — runtime-tunable params (admin_secret, FSRS defaults, DF θ, fatigue threshold, circuit breaker config) — changes take effect without restart
+- `admin_operation_log` — audit trail (login, role change, ban/unban, AI/system config edit, batch import, impersonation)
+- `word_import_batch` — CSV/Excel import progress and result tracking
 
 ## Frontend Key Patterns
 
@@ -153,10 +169,11 @@ Full endpoint list: 9 modules, ~30 endpoints. See `文档/后端规划.txt` §�
 - **Desktop-first:** base width 1440px, breakpoint at 1024px
 - **Speech:** Browser SpeechSynthesis API (not backend)
 - **Fatigue detection:** snackbar after 20min cumulative study
+- **Admin frontend:** separate `AdminLayout.vue` (sidebar + topbar) at `/admin/*` routes — Dashboard / Users / Words / AI / Stats / Settings / Logs. Hidden entry on Login: rapid-click TiMo logo 5× within 3s reveals a secret-key input box. Router guard checks JWT role; `SUPER_ADMIN`-only routes additionally check role server-side.
 
 ## Working with This Repository
 
-- Documentation is in Chinese (Simplified) — algorithm specs in `文档/基于 AI Agent 与 FSRS 的自适应语境化背单词系统.txt`, frontend plan in `文档/前端规划.txt`, backend plan in `文档/后端规划.txt`
-- No automated tests yet — unit tests are a remaining task
+- Documentation is in Chinese (Simplified) — algorithm specs in `文档/基于 AI Agent 与 FSRS 的自适应语境化背单词系统.txt`, frontend plan in `文档/前端规划.txt`, backend plan in `文档/后端规划.txt`, admin design in `ADMIN_PLAN.md`
+- Tests: backend `./mvnw test -Dspring.profiles.active=test` (277 tests across algorithm, services, controllers, admin), frontend `npm test` (96 tests covering stores, router, API contract). Both pass green as of 2026-05-23.
 - Agent TiMo visual assets: `agent形象/` (5 SVG states: idle, thinking, alert, success, offline)
 - Word data sourced from kajweb/dict (18,142 words across 8 exam types), enriched with Collins stars + BNC/COCA frequency from ECDICT
