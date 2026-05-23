@@ -60,6 +60,12 @@ const routes = [
         meta: { title: '统一复习' }
       },
       {
+        path: 'study/reverse-recall',
+        name: 'ReverseRecall',
+        component: () => import('../views/ReverseRecall.vue'),
+        meta: { title: '中→英召回', needAuth: true }
+      },
+      {
         path: 'wordbank',
         name: 'Wordbank',
         component: () => import('../views/Wordbank.vue'),

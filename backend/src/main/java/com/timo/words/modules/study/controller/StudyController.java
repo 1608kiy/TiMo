@@ -5,6 +5,8 @@ import com.timo.words.modules.study.service.StudyService;
 import com.timo.words.modules.study.service.StudyService.ContextDeepGroupSubmitRequest;
 import com.timo.words.modules.study.service.StudyService.ContextDeepSubmitRequest;
 import com.timo.words.modules.study.service.StudyService.QuickMemorySubmitRequest;
+import com.timo.words.modules.study.service.StudyService.ReverseRecallCandidate;
+import com.timo.words.modules.study.service.StudyService.ReverseRecallSubmitRequest;
 import com.timo.words.modules.study.service.StudyService.SubmitResponse;
 import com.timo.words.modules.study.service.StudyService.UnifiedReviewSubmitRequest;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,6 +14,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @Tag(name = "学习模块")
 @RestController
@@ -60,5 +64,24 @@ public class StudyController {
         request.setUserId(userId);
         studyService.submitContextDeepGroup(request);
         return Result.success(null);
+    }
+
+    @Operation(summary = "提交中→英主动召回")
+    @PostMapping("/submit-reverse-recall")
+    public Result<SubmitResponse> submitReverseRecall(
+            @RequestBody ReverseRecallSubmitRequest request,
+            Authentication authentication) {
+        Long userId = (Long) authentication.getPrincipal();
+        request.setUserId(userId);
+        return Result.success(studyService.submitReverseRecall(request));
+    }
+
+    @Operation(summary = "获取中→英主动召回候选词")
+    @GetMapping("/reverse-recall/candidates")
+    public Result<List<ReverseRecallCandidate>> getReverseRecallCandidates(
+            @RequestParam(defaultValue = "10") int limit,
+            Authentication authentication) {
+        Long userId = (Long) authentication.getPrincipal();
+        return Result.success(studyService.getReverseRecallCandidates(userId, limit));
     }
 }
