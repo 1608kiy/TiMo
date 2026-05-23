@@ -4,6 +4,7 @@ import com.timo.words.common.BusinessException;
 import com.timo.words.common.ResultCode;
 import com.timo.words.modules.examplan.entity.ExamPlan;
 import com.timo.words.modules.examplan.repository.ExamPlanRepository;
+import com.timo.words.modules.study.repository.QuizRecordRepository;
 import com.timo.words.modules.user.entity.User;
 import com.timo.words.modules.user.repository.UserRepository;
 import lombok.Data;
@@ -15,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -26,6 +28,7 @@ public class ExamPlanService {
 
     private final ExamPlanRepository examPlanRepository;
     private final UserRepository userRepository;
+    private final QuizRecordRepository quizRecordRepository;
     private final StringRedisTemplate stringRedisTemplate;
 
     // --- DTOs ---
@@ -65,6 +68,22 @@ public class ExamPlanService {
         private int estimatedDays;
         private int studyDaysPerWeek;
         private double dailyHours;
+    }
+
+    /**
+     * 今日学习配额：用于 WordSelect / Dashboard 等页面在用户决定数量前
+     * 校验"今日已学新词数 / 已复习数"是否已达 ExamPlan 上限。
+     * 没有 active plan 时 target/remaining 为 null/-1，hasActivePlan=false。
+     */
+    @Data
+    public static class DailyQuotaDTO {
+        private Integer dailyNewWordsTarget;     // 计划值，null 表示无计划
+        private Integer dailyReviewWordsTarget;
+        private int todayNewWordsLearned;        // 今日已学新词（study_mode=quick_memory）
+        private int todayReviewsCompleted;       // 今日已复习（unified_review + context_deep）
+        private int newWordsRemaining;           // = max(0, target - learned)，无计划时返回 -1
+        private int reviewsRemaining;
+        private boolean hasActivePlan;
     }
 
     // --- Dialog State Machine ---
@@ -284,6 +303,51 @@ public class ExamPlanService {
         resp.setPlanReady(true);
         resp.setPlanSummary(buildSummary(plan));
         return resp;
+    }
+
+    /**
+     * 计算用户今日学习配额：对比 ExamPlan 上限 vs 当日已完成的新词/复习数。
+     *
+     * 数据来源：quiz_records 表，按 study_mode 区分：
+     *   - 新词：study_mode = "quick_memory"
+     *   - 复习：study_mode ∈ {"unified_review", "context_deep"}
+     *
+     * Today 起点：本地时区当天 00:00:00。
+     * 无 active plan 时 target=null、remaining=-1（前端据此显示"未设置规划"）。
+     */
+    public DailyQuotaDTO getTodayQuota(Long userId) {
+        DailyQuotaDTO dto = new DailyQuotaDTO();
+        LocalDateTime todayStart = LocalDate.now().atStartOfDay();
+
+        int newLearned = (int) quizRecordRepository
+                .countByUserIdAndCreatedAtAfterAndStudyMode(userId, todayStart, "quick_memory");
+        int reviewsDone = (int) quizRecordRepository
+                .countByUserIdAndCreatedAtAfterAndStudyModeIn(
+                        userId, todayStart, List.of("unified_review", "context_deep"));
+        dto.setTodayNewWordsLearned(newLearned);
+        dto.setTodayReviewsCompleted(reviewsDone);
+
+        ExamPlan plan = examPlanRepository
+                .findFirstByUserIdAndIsActiveTrueOrderByCreatedAtDesc(userId)
+                .orElse(null);
+
+        if (plan == null) {
+            dto.setHasActivePlan(false);
+            dto.setDailyNewWordsTarget(null);
+            dto.setDailyReviewWordsTarget(null);
+            dto.setNewWordsRemaining(-1);
+            dto.setReviewsRemaining(-1);
+            return dto;
+        }
+
+        dto.setHasActivePlan(true);
+        Integer newTarget = plan.getDailyNewWords();
+        Integer reviewTarget = plan.getDailyReviewWords();
+        dto.setDailyNewWordsTarget(newTarget);
+        dto.setDailyReviewWordsTarget(reviewTarget);
+        dto.setNewWordsRemaining(newTarget == null ? -1 : Math.max(0, newTarget - newLearned));
+        dto.setReviewsRemaining(reviewTarget == null ? -1 : Math.max(0, reviewTarget - reviewsDone));
+        return dto;
     }
 
     // --- Helpers ---

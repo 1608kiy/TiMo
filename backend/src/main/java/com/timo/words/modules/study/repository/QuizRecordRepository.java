@@ -22,6 +22,24 @@ public interface QuizRecordRepository extends JpaRepository<QuizRecord, Long> {
 
     long countByUserIdAndGradeGreaterThanEqual(Long userId, double grade);
 
+    // Daily quota — used by ExamPlanService.getTodayQuota (Spring Data derived queries)
+    long countByUserIdAndCreatedAtAfterAndStudyMode(Long userId, LocalDateTime since, String studyMode);
+
+    long countByUserIdAndCreatedAtAfterAndStudyModeIn(Long userId, LocalDateTime since, Collection<String> studyModes);
+
+    @Query("SELECT COUNT(q) FROM QuizRecord q WHERE q.userId = :userId AND q.createdAt >= :since AND q.studyMode = :studyMode")
+    long countByUserIdSinceAndStudyMode(@Param("userId") Long userId,
+                                         @Param("since") LocalDateTime since,
+                                         @Param("studyMode") String studyMode);
+
+    @Query("SELECT COUNT(DISTINCT q.wordId) FROM QuizRecord q WHERE q.userId = :userId AND q.createdAt >= :since AND q.studyMode = :studyMode")
+    long countDistinctWordIdByUserIdSinceAndStudyMode(@Param("userId") Long userId,
+                                                       @Param("since") LocalDateTime since,
+                                                       @Param("studyMode") String studyMode);
+
+    @Query("SELECT COUNT(q) FROM QuizRecord q WHERE q.userId = :userId AND q.createdAt >= :since")
+    long countByUserIdSince(@Param("userId") Long userId, @Param("since") LocalDateTime since);
+
     @Query("SELECT COUNT(DISTINCT q.wordId) FROM QuizRecord q WHERE q.userId = :userId")
     long countDistinctWordIdByUserId(@Param("userId") Long userId);
 

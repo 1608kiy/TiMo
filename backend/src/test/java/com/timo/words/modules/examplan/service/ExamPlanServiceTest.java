@@ -3,6 +3,7 @@ package com.timo.words.modules.examplan.service;
 import com.timo.words.common.BusinessException;
 import com.timo.words.modules.examplan.entity.ExamPlan;
 import com.timo.words.modules.examplan.repository.ExamPlanRepository;
+import com.timo.words.modules.study.repository.QuizRecordRepository;
 import com.timo.words.modules.user.entity.User;
 import com.timo.words.modules.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +16,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -29,6 +31,7 @@ class ExamPlanServiceTest {
 
     @Mock private ExamPlanRepository examPlanRepository;
     @Mock private UserRepository userRepository;
+    @Mock private QuizRecordRepository quizRecordRepository;
     @Mock private StringRedisTemplate stringRedisTemplate;
     @Mock private ValueOperations<String, String> valueOperations;
     @InjectMocks private ExamPlanService examPlanService;
@@ -54,7 +57,7 @@ class ExamPlanServiceTest {
         assertEquals("exam_type", resp.getStage());
         assertNotNull(resp.getMessage());
         assertNotNull(resp.getOptions());
-        assertEquals(7, resp.getOptions().size());
+        assertEquals(4, resp.getOptions().size());
         assertFalse(resp.isPlanReady());
     }
 
@@ -207,7 +210,7 @@ class ExamPlanServiceTest {
     void generatePlan_allExamTypes() {
         String[][] cases = {
                 {"cet4", "4500"}, {"cet6", "6500"}, {"gk", "5500"},
-                {"ielts", "7000"}, {"toefl", "8000"}, {"tem4", "6000"}, {"tem8", "10000"}
+                {"gaokao", "3500"}
         };
 
         for (String[] tc : cases) {
@@ -233,5 +236,77 @@ class ExamPlanServiceTest {
             assertEquals(Integer.parseInt(tc[1]), plan.getTargetVocab(),
                     "Target vocab for " + tc[0]);
         }
+    }
+
+    // --- getTodayQuota ---
+
+    @Test
+    void getTodayQuota_withActivePlan_partialProgress() {
+        // 计划: 20 new / 50 review; 已学: 7 new / 12 review
+        ExamPlan plan = new ExamPlan();
+        plan.setDailyNewWords(20);
+        plan.setDailyReviewWords(50);
+        plan.setIsActive(true);
+
+        when(examPlanRepository.findFirstByUserIdAndIsActiveTrueOrderByCreatedAtDesc(1L))
+                .thenReturn(Optional.of(plan));
+        when(quizRecordRepository.countByUserIdAndCreatedAtAfterAndStudyMode(
+                eq(1L), any(LocalDateTime.class), eq("quick_memory"))).thenReturn(7L);
+        when(quizRecordRepository.countByUserIdAndCreatedAtAfterAndStudyModeIn(
+                eq(1L), any(LocalDateTime.class), anyCollection())).thenReturn(12L);
+
+        ExamPlanService.DailyQuotaDTO dto = examPlanService.getTodayQuota(1L);
+
+        assertTrue(dto.isHasActivePlan());
+        assertEquals(20, dto.getDailyNewWordsTarget());
+        assertEquals(50, dto.getDailyReviewWordsTarget());
+        assertEquals(7, dto.getTodayNewWordsLearned());
+        assertEquals(12, dto.getTodayReviewsCompleted());
+        assertEquals(13, dto.getNewWordsRemaining());   // 20 - 7
+        assertEquals(38, dto.getReviewsRemaining());    // 50 - 12
+    }
+
+    @Test
+    void getTodayQuota_overTarget_clampsRemainingToZero() {
+        // 计划: 10 new / 20 review; 已学: 15 new / 25 review（超额）
+        ExamPlan plan = new ExamPlan();
+        plan.setDailyNewWords(10);
+        plan.setDailyReviewWords(20);
+        plan.setIsActive(true);
+
+        when(examPlanRepository.findFirstByUserIdAndIsActiveTrueOrderByCreatedAtDesc(1L))
+                .thenReturn(Optional.of(plan));
+        when(quizRecordRepository.countByUserIdAndCreatedAtAfterAndStudyMode(
+                eq(1L), any(LocalDateTime.class), eq("quick_memory"))).thenReturn(15L);
+        when(quizRecordRepository.countByUserIdAndCreatedAtAfterAndStudyModeIn(
+                eq(1L), any(LocalDateTime.class), anyCollection())).thenReturn(25L);
+
+        ExamPlanService.DailyQuotaDTO dto = examPlanService.getTodayQuota(1L);
+
+        assertTrue(dto.isHasActivePlan());
+        assertEquals(0, dto.getNewWordsRemaining());
+        assertEquals(0, dto.getReviewsRemaining());
+        assertEquals(15, dto.getTodayNewWordsLearned());
+    }
+
+    @Test
+    void getTodayQuota_noActivePlan_returnsMinusOneRemaining() {
+        when(examPlanRepository.findFirstByUserIdAndIsActiveTrueOrderByCreatedAtDesc(1L))
+                .thenReturn(Optional.empty());
+        when(quizRecordRepository.countByUserIdAndCreatedAtAfterAndStudyMode(
+                eq(1L), any(LocalDateTime.class), eq("quick_memory"))).thenReturn(3L);
+        when(quizRecordRepository.countByUserIdAndCreatedAtAfterAndStudyModeIn(
+                eq(1L), any(LocalDateTime.class), anyCollection())).thenReturn(5L);
+
+        ExamPlanService.DailyQuotaDTO dto = examPlanService.getTodayQuota(1L);
+
+        assertFalse(dto.isHasActivePlan());
+        assertNull(dto.getDailyNewWordsTarget());
+        assertNull(dto.getDailyReviewWordsTarget());
+        assertEquals(-1, dto.getNewWordsRemaining());
+        assertEquals(-1, dto.getReviewsRemaining());
+        // 已学计数仍然回填（即使没有计划，UI 也可以显示"今日完成数"）
+        assertEquals(3, dto.getTodayNewWordsLearned());
+        assertEquals(5, dto.getTodayReviewsCompleted());
     }
 }

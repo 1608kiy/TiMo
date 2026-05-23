@@ -11,3 +11,8 @@ export function continueExamPlanDialog(answer) {
 export function getExamPlanStatus() {
   return request.get('/exam-plan/status')
 }
+
+// 今日新词/复习 配额（ExamPlan 闭环）
+export function getDailyQuota() {
+  return request.get('/exam-plan/daily-quota')
+}

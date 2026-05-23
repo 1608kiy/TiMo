@@ -1,5 +1,47 @@
 <template>
   <div class="word-select fade-in-up">
+    <!-- 今日学习配额横幅 -->
+    <div class="quota-banner" :class="{ 'no-plan': !quota?.hasActivePlan }">
+      <template v-if="quota?.hasActivePlan">
+        <div class="quota-row">
+          <div class="quota-block">
+            <span class="quota-label">&#x1F4D6; 今日新词</span>
+            <span class="quota-value">{{ quota.todayNewWordsLearned }} / {{ quota.dailyNewWordsTarget }}</span>
+            <el-progress
+              :percentage="newWordsPct"
+              :stroke-width="10"
+              :show-text="false"
+              :color="newProgressColor"
+              class="quota-progress"
+            />
+            <span class="quota-remain" :class="{ exceeded: quota.newWordsRemaining === 0 }">
+              {{ quota.newWordsRemaining === 0 ? '已达上限' : `剩 ${quota.newWordsRemaining}` }}
+            </span>
+          </div>
+          <div class="quota-block">
+            <span class="quota-label">&#x1F504; 今日复习</span>
+            <span class="quota-value">{{ quota.todayReviewsCompleted }} / {{ quota.dailyReviewWordsTarget }}</span>
+            <el-progress
+              :percentage="reviewsPct"
+              :stroke-width="10"
+              :show-text="false"
+              :color="reviewProgressColor"
+              class="quota-progress"
+            />
+            <span class="quota-remain" :class="{ exceeded: quota.reviewsRemaining === 0 }">
+              {{ quota.reviewsRemaining === 0 ? '已达上限' : `剩 ${quota.reviewsRemaining}` }}
+            </span>
+          </div>
+        </div>
+      </template>
+      <template v-else>
+        <div class="no-plan-row">
+          <span class="no-plan-text">&#x1F4DD; 你还没有备考规划，无法评估每日学习量</span>
+          <el-button size="small" type="primary" @click="goToExamPlan">前往规划</el-button>
+        </div>
+      </template>
+    </div>
+
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-content">
@@ -217,13 +259,20 @@
             <p class="recommend-empty-sub">完成更多练习后，TiMo 会帮你找到薄弱环节</p>
           </div>
 
+          <!-- 超额提示（只针对 quick_memory + 有 active plan） -->
+          <div v-if="overQuotaHint" class="quota-hint" :class="{ 'quota-hint-block': quotaBlockMode }">
+            <span class="quota-hint-icon">&#x26A0;&#xFE0F;</span>
+            <span>{{ overQuotaHint }}</span>
+          </div>
+
           <el-button
             type="primary"
             class="start-btn"
+            :class="{ 'start-btn-warn': isOverQuota && !quotaBlockMode }"
             :disabled="!selectedIds.length"
             @click="startLearning"
           >
-            开始学习 &#x1F680;
+            {{ startBtnLabel }}
           </el-button>
         </div>
       </aside>
@@ -238,11 +287,15 @@ import { getWordList, searchWords, getWordBatch } from '../api/words'
 import { getRecommend } from '../api/agent'
 import { useAgentStore } from '../stores/agent'
 import { useUserStore } from '../stores/user'
+import { useExamPlanStore } from '../stores/examPlan'
+import { storeToRefs } from 'pinia'
 import TiMoFAB from '../components/agent/TiMoFAB.vue'
 
 const router = useRouter()
 const agentStore = useAgentStore()
 const userStore = useUserStore()
+const examPlanStore = useExamPlanStore()
+const { quota } = storeToRefs(examPlanStore)
 
 const tableRef = ref(null)
 const search = ref('')
@@ -277,6 +330,55 @@ import { examTypeOptions } from '../constants/examTypes'
 
 const selectedWordsPreview = computed(() => {
   return Object.values(selectedMap.value).slice(0, 50)
+})
+
+// ====== 配额相关 ======
+const newWordsPct = computed(() => {
+  const q = quota.value
+  if (!q?.hasActivePlan || !q.dailyNewWordsTarget) return 0
+  return Math.min(100, Math.round((q.todayNewWordsLearned / q.dailyNewWordsTarget) * 100))
+})
+const reviewsPct = computed(() => {
+  const q = quota.value
+  if (!q?.hasActivePlan || !q.dailyReviewWordsTarget) return 0
+  return Math.min(100, Math.round((q.todayReviewsCompleted / q.dailyReviewWordsTarget) * 100))
+})
+const newProgressColor = computed(() => {
+  const pct = newWordsPct.value
+  if (pct >= 100) return '#67c23a'
+  if (pct >= 60) return '#409eff'
+  return '#909399'
+})
+const reviewProgressColor = computed(() => {
+  const pct = reviewsPct.value
+  if (pct >= 100) return '#67c23a'
+  if (pct >= 60) return '#409eff'
+  return '#909399'
+})
+
+// 当前是否处于"超额选词"状态（仅 quick_memory 模式 + 有计划 才会触发警告）
+const isOverQuota = computed(() => {
+  const q = quota.value
+  if (!q?.hasActivePlan) return false
+  if (studyMode.value !== 'quick_memory') return false
+  if (q.newWordsRemaining < 0) return false // 安全防御
+  return selectedIds.value.length > q.newWordsRemaining
+})
+// newWordsRemaining===0 → 引导跳转复习
+const quotaBlockMode = computed(() => {
+  const q = quota.value
+  return q?.hasActivePlan && studyMode.value === 'quick_memory' && q.newWordsRemaining === 0
+})
+const overQuotaHint = computed(() => {
+  if (!isOverQuota.value && !quotaBlockMode.value) return ''
+  if (quotaBlockMode.value) return '今日新词配额已用完，建议改做复习'
+  const q = quota.value
+  return `已选 ${selectedIds.value.length} 个新词，超过今日计划剩余 ${q.newWordsRemaining}。建议改做复习或减少选词。`
+})
+const startBtnLabel = computed(() => {
+  if (quotaBlockMode.value) return '今日新词已达计划上限，建议复习 \u{1F504}'
+  if (isOverQuota.value) return '继续（已超计划） \u{1F680}'
+  return '开始学习 \u{1F680}'
 })
 
 function toggleExamType(type) {
@@ -416,6 +518,11 @@ function examTagType(type) {
 
 function startLearning() {
   if (!selectedIds.value.length) return
+  // 配额已用完且当前是 quick_memory：直接导航到 ReviewMode
+  if (quotaBlockMode.value) {
+    router.push('/review')
+    return
+  }
   const wordIds = selectedIds.value.join(',')
   sessionStorage.setItem('timo_study_word_ids', wordIds)
   if (studyMode.value === 'quick_memory') {
@@ -425,11 +532,16 @@ function startLearning() {
   }
 }
 
+function goToExamPlan() {
+  router.push('/exam-plan')
+}
+
 onMounted(() => {
   agentStore.setCurrentPage('wordSelect')
   if (userStore.token) {
     loadWords()
     fetchRecommendations()
+    examPlanStore.fetchQuota()
   }
 })
 
@@ -441,6 +553,109 @@ onBeforeUnmount(() => {
 <style scoped>
 .word-select {
   width: 100%;
+}
+
+/* ====== 今日配额横幅 ====== */
+.quota-banner {
+  margin-bottom: 16px;
+  padding: 14px 20px;
+  background: linear-gradient(135deg, #e8f5ff, #fff8e1);
+  border: 2px solid var(--color-primary-lighter);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 3px 0 var(--color-border-lighter);
+}
+
+.quota-banner.no-plan {
+  background: linear-gradient(135deg, #fff4e6, #fffaf0);
+  border-color: #ffcc80;
+}
+
+.quota-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.quota-block {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.quota-label {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.quota-value {
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--color-primary-dark);
+  white-space: nowrap;
+}
+
+.quota-progress { min-width: 60px; }
+
+.quota-remain {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.quota-remain.exceeded {
+  color: #67c23a;
+}
+
+.no-plan-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.no-plan-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: #e6700f;
+}
+
+/* ====== 超额提示 ====== */
+.quota-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: #fff8e1;
+  border: 1.5px solid #ffc107;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 700;
+  color: #b26a00;
+  line-height: 1.45;
+}
+
+.quota-hint-block {
+  background: #ffebee;
+  border-color: #e57373;
+  color: #c62828;
+}
+
+.quota-hint-icon { flex-shrink: 0; }
+
+.start-btn-warn {
+  background: #ff9800 !important;
+  border-color: #ff9800 !important;
+}
+
+.start-btn-warn:hover {
+  background: #fb8c00 !important;
+  border-color: #fb8c00 !important;
 }
 
 /* ====== 页面标题 ====== */

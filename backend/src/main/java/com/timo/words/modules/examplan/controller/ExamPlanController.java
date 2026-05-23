@@ -2,6 +2,7 @@ package com.timo.words.modules.examplan.controller;
 
 import com.timo.words.common.Result;
 import com.timo.words.modules.examplan.service.ExamPlanService;
+import com.timo.words.modules.examplan.service.ExamPlanService.DailyQuotaDTO;
 import com.timo.words.modules.examplan.service.ExamPlanService.DialogRequest;
 import com.timo.words.modules.examplan.service.ExamPlanService.DialogResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -40,5 +41,12 @@ public class ExamPlanController {
     public Result<DialogResponse> getStatus(Authentication authentication) {
         Long userId = (Long) authentication.getPrincipal();
         return Result.success(examPlanService.getPlanStatus(userId));
+    }
+
+    @Operation(summary = "获取今日学习配额（新词/复习目标 vs 已完成）")
+    @GetMapping("/daily-quota")
+    public Result<DailyQuotaDTO> getDailyQuota(Authentication authentication) {
+        Long userId = (Long) authentication.getPrincipal();
+        return Result.success(examPlanService.getTodayQuota(userId));
     }
 }

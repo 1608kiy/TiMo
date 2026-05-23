@@ -106,4 +106,21 @@ describe('useExamPlanStore', () => {
     // After cancel, Dashboard checks timo_plan_skipped flag
     // This is verified by the Dashboard component using localStorage
   })
+
+  it('quota initial state is null and reset clears it', () => {
+    const store = useExamPlanStore()
+    expect(store.quota).toBeNull()
+    expect(store.quotaLoading).toBe(false)
+    // simulate manual hydration
+    store.quota = {
+      hasActivePlan: true,
+      dailyNewWordsTarget: 20,
+      todayNewWordsLearned: 5,
+      newWordsRemaining: 15
+    }
+    expect(store.quota.newWordsRemaining).toBe(15)
+    store.reset()
+    expect(store.quota).toBeNull()
+    expect(store.quotaLoading).toBe(false)
+  })
 })
