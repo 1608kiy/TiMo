@@ -57,7 +57,7 @@ class ReviewServiceTest {
 
     @Test
     void getReviewQueue_mergesDueAndStubborn() {
-        when(userWordBindRepository.findByUserIdAndNextReviewTimeBefore(eq(1L), any()))
+        when(userWordBindRepository.findActiveDueByUserIdAndTimeBefore(eq(1L), any()))
                 .thenReturn(List.of(dueBind));
         when(userWordBindRepository.findByUserIdAndIsStubbornTrue(1L))
                 .thenReturn(List.of(stubbornBind));
@@ -79,7 +79,7 @@ class ReviewServiceTest {
 
     @Test
     void getReviewQueue_stubbornFirst() {
-        when(userWordBindRepository.findByUserIdAndNextReviewTimeBefore(eq(1L), any()))
+        when(userWordBindRepository.findActiveDueByUserIdAndTimeBefore(eq(1L), any()))
                 .thenReturn(List.of(dueBind));
         when(userWordBindRepository.findByUserIdAndIsStubbornTrue(1L))
                 .thenReturn(List.of(stubbornBind));
@@ -99,7 +99,7 @@ class ReviewServiceTest {
 
     @Test
     void getReviewQueue_empty() {
-        when(userWordBindRepository.findByUserIdAndNextReviewTimeBefore(eq(1L), any()))
+        when(userWordBindRepository.findActiveDueByUserIdAndTimeBefore(eq(1L), any()))
                 .thenReturn(Collections.emptyList());
         when(userWordBindRepository.findByUserIdAndIsStubbornTrue(1L))
                 .thenReturn(Collections.emptyList());
@@ -113,7 +113,7 @@ class ReviewServiceTest {
     void getReviewQueue_deduplicatesStubborn() {
         // A stubborn word that's also due should appear once
         dueBind.setIsStubborn(true);
-        when(userWordBindRepository.findByUserIdAndNextReviewTimeBefore(eq(1L), any()))
+        when(userWordBindRepository.findActiveDueByUserIdAndTimeBefore(eq(1L), any()))
                 .thenReturn(List.of(dueBind));
         when(userWordBindRepository.findByUserIdAndIsStubbornTrue(1L))
                 .thenReturn(List.of(dueBind));
@@ -125,6 +125,28 @@ class ReviewServiceTest {
 
         ReviewService.ReviewQueueResponse resp = reviewService.getReviewQueue(1L);
         assertEquals(1, resp.getWords().size());
+    }
+
+    @Test
+    void getReviewQueue_excludesMasteredFromDue() {
+        // Mastered words are filtered at the SQL level by findActiveDueByUserIdAndTimeBefore.
+        // Simulating that filter: even though we have a "due" bind that's mastered,
+        // the repository returns empty due list (the filter excluded it).
+        UserWordBind masteredBind = new UserWordBind();
+        masteredBind.setId(3L);
+        masteredBind.setUserId(1L);
+        masteredBind.setWordId(30L);
+        masteredBind.setIsStubborn(false);
+        masteredBind.setMasteredAt(LocalDateTime.now().minusDays(1));
+        masteredBind.setNextReviewTime(LocalDateTime.now().minusHours(1));
+
+        when(userWordBindRepository.findActiveDueByUserIdAndTimeBefore(eq(1L), any()))
+                .thenReturn(Collections.emptyList()); // filter excludes mastered
+        when(userWordBindRepository.findByUserIdAndIsStubbornTrue(1L))
+                .thenReturn(Collections.emptyList());
+
+        ReviewService.ReviewQueueResponse resp = reviewService.getReviewQueue(1L);
+        assertEquals(0, resp.getWords().size(), "Mastered words should not appear in default queue");
     }
 
     @Test

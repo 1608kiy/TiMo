@@ -6,6 +6,7 @@ import com.timo.words.modules.study.entity.QuizRecord;
 import com.timo.words.modules.study.entity.UserWordBind;
 import com.timo.words.modules.study.repository.QuizRecordRepository;
 import com.timo.words.modules.study.repository.UserWordBindRepository;
+import com.timo.words.modules.word.repository.WordRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -27,6 +28,7 @@ class StatisticsServiceTest {
     @Mock private QuizRecordRepository quizRecordRepository;
     @Mock private UserWordBindRepository userWordBindRepository;
     @Mock private CheckinRecordRepository checkinRecordRepository;
+    @Mock private WordRepository wordRepository;
     @InjectMocks private StatisticsService statisticsService;
 
     @Test
@@ -48,8 +50,11 @@ class StatisticsServiceTest {
 
     @Test
     void getOverview_withData() {
+        // Mastered now driven by masteredAt timestamp (set by StudyService.updateMasteredStatus)
+        // instead of the legacy stability >= 1.2 check.
         UserWordBind mastered = new UserWordBind();
-        mastered.setStability(1.5);
+        mastered.setStability(40.0);
+        mastered.setMasteredAt(LocalDateTime.now().minusDays(1));
         UserWordBind learning = new UserWordBind();
         learning.setStability(0.8);
 

@@ -40,6 +40,7 @@ public class ReviewService {
         private List<WordDTO.MeaningDTO> meanings;
         private List<WordDTO.ExampleDTO> examples;
         private boolean stubborn;
+        private int consecutiveErrors;     // # of consecutive recent failures — drives badge intensity
         private double stability;
         private double difficulty;
     }
@@ -77,11 +78,16 @@ public class ReviewService {
     public ReviewQueueResponse getReviewQueue(Long userId, int limit) {
         LocalDateTime now = LocalDateTime.now();
 
-        // Get due words (next_review_time <= now)
+        // Get due words (next_review_time <= now), excluding mastered words.
+        // Mastered words (masteredAt != null) drop out of the default queue —
+        // FSRS will naturally re-surface them when their interval truly elapses,
+        // but a "mastered counter" tracks them separately for motivation.
         List<UserWordBind> dueBinds = userWordBindRepository
-                .findByUserIdAndNextReviewTimeBefore(userId, now);
+                .findActiveDueByUserIdAndTimeBefore(userId, now);
 
-        // Get stubborn words
+        // Get stubborn words (these are NOT filtered by mastered — if a previously
+        // mastered word becomes stubborn, the demotion in StudyService.updateMasteredStatus
+        // will have already cleared masteredAt).
         List<UserWordBind> stubbornBinds = userWordBindRepository
                 .findByUserIdAndIsStubbornTrue(userId);
 
@@ -116,6 +122,7 @@ public class ReviewService {
             dto.setStability(bind.getStability() != null ? bind.getStability() : 1.0);
             dto.setDifficulty(bind.getDifficulty() != null ? bind.getDifficulty() : 5.0);
             dto.setStubborn(Boolean.TRUE.equals(bind.getIsStubborn()));
+            dto.setConsecutiveErrors(bind.getConsecutiveErrors() != null ? bind.getConsecutiveErrors() : 0);
 
             Word w = wordMap.get(bind.getWordId());
             if (w != null) {

@@ -60,6 +60,25 @@ public class UserWordBind {
     @Column(name = "last_study_mode")
     private String lastStudyMode;
 
+    /**
+     * Bitmap of mastered meaning sortOrders (or weights) for polysemous words.
+     * Bit i is set when the i-th meaning has been correctly answered in context_deep mode.
+     * Supports up to 64 distinct meanings per word (typically 1-5 in real exams).
+     * Used by the Step 2 meaning rotation to prioritize unmastered senses.
+     */
+    @Column(name = "meaning_mastered_mask", nullable = false)
+    private Long meaningMasteredMask = 0L;
+
+    /**
+     * Timestamp when this word entered the "mastered" state: S > 21 days,
+     * recent grade ≥ 3.5, no current error streak. Mastered words drop out of
+     * the default review queue (FSRS will naturally re-surface them via
+     * nextReviewTime when retrievability actually decays). NULL = not mastered.
+     * Cleared back to NULL when the user fails the word post-graduation (grade < 3.0).
+     */
+    @Column(name = "mastered_at")
+    private LocalDateTime masteredAt;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

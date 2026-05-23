@@ -89,8 +89,11 @@ public class StatisticsService {
 
         List<UserWordBind> binds = userWordBindRepository.findByUserId(userId);
         dto.setTotalWordsStudied(binds.size());
+        // Mastered = words promoted by StudyService.updateMasteredStatus (S > 21d, recent grade ≥ 3.5,
+        // no error streak). Replaces the legacy "stability >= 1.2" check which was tied to the old
+        // [0.5, 1.5] stability bound and lost all meaning after the FSRS bounds fix.
         dto.setMasteredWords((int) binds.stream()
-                .filter(b -> b.getStability() != null && b.getStability() >= 1.2)
+                .filter(b -> b.getMasteredAt() != null)
                 .count());
 
         dto.setTotalRecords((int) quizRecordRepository.countByUserId(userId));
