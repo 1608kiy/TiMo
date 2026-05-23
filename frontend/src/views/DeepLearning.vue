@@ -43,6 +43,10 @@
       <!-- Step 1: 词卡 + 真题考点 -->
       <div v-if="step === 1" class="step-content">
         <div class="step-title">Step 1: 认识这个词</div>
+        <!-- 顽固词提示徽章：之前难倒过你 -->
+        <div v-if="currentWord.stubborn" class="stubborn-badge">
+          &#x1F525; 这个词难倒过你<span v-if="currentWord.consecutiveErrors">{{ ' ' + currentWord.consecutiveErrors + ' 次' }}</span>
+        </div>
         <div class="word-card">
           <div class="word-main">
             {{ currentWord.word }}
@@ -175,6 +179,8 @@
       <p class="step-desc">点击单词，再点击空格填入</p>
       <div v-if="passageLoading" class="passage-loading">&#x23F3; AI 正在生成语境...</div>
       <template v-else>
+        <div v-if="passageData?.title" class="passage-title">{{ passageData.title }}</div>
+        <div v-if="passageData?.translation" class="passage-translation">{{ passageData.translation }}</div>
         <!-- 单词池 -->
         <div class="passage-pool">
           <span v-for="(w, wi) in words" :key="w.id" class="pool-word"
@@ -232,8 +238,13 @@
           placeholder="输入完整单词..." :disabled="completeSubmitted" @keyup.enter="checkComplete" />
       </div>
       <el-button v-if="!completeSubmitted" size="large" type="primary" @click="checkComplete">确认</el-button>
-      <div v-if="completeSubmitted" class="blank-result" :class="completeCorrect ? 'correct' : 'wrong'">
-        {{ completeCorrect ? '&#x2713; 正确' : '正确答案: ' + (currentSpellWord ? currentSpellWord.word : '') }}
+      <div v-if="completeSubmitted" class="blank-result"
+           :class="completeResultClass">
+        <template v-if="completeResultClass === 'correct'">&#x2713; 正确</template>
+        <template v-else-if="completeResultClass === 'typo'">
+          &#x26A0;&#xFE0F; 差一个字母：正确是 <strong>{{ currentSpellWord ? currentSpellWord.word : '' }}</strong>
+        </template>
+        <template v-else>正确答案: {{ currentSpellWord ? currentSpellWord.word : '' }}</template>
       </div>
     </div>
 
@@ -278,17 +289,25 @@
       </div>
     </div>
 
-    <!-- Session Done -->
-    <div v-if="sessionDone" class="session-done">
-      <div class="done-card">
-        <div style="font-size: 48px; margin-bottom: 8px;">&#x2705;</div>
-        <h2>全部完成！</h2>
-        <div class="done-actions">
-          <el-button type="primary" @click="$router.push('/review')">去复习 &#x1F504;</el-button>
-          <el-button @click="$router.push('/')">返回首页 &#x1F3E0;</el-button>
+      <!-- Session Done -->
+      <div v-if="sessionDone" class="session-done">
+        <div class="done-card">
+          <div style="font-size: 48px; margin-bottom: 8px;">&#x2705;</div>
+          <h2>全部完成！</h2>
+          <!-- TiMo Coach Summary -->
+          <div v-if="coachSummary" class="coach-summary">
+            <div class="coach-header">
+              <span class="coach-icon">&#x1F9D1;&#x200D;&#x1F3EB;</span>
+              <span class="coach-label">TiMo 教练点评</span>
+            </div>
+            <p class="coach-text">{{ coachSummary }}</p>
+          </div>
+          <div class="done-actions">
+            <el-button type="primary" @click="$router.push('/review')">去复习 &#x1F504;</el-button>
+            <el-button @click="$router.push('/')">返回首页 &#x1F3E0;</el-button>
+          </div>
         </div>
       </div>
-    </div>
 
     <!-- TiMo FAB -->
     <TiMoFAB />
@@ -301,11 +320,12 @@ import { useRoute } from 'vue-router'
 import { Loading } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getWordBatch, getWordList } from '../api/words'
-import { submitContextDeepGroup } from '../api/study'
-import { generatePassage } from '../api/agent'
-import { getReviewQueue } from '../api/review'
+  import { submitContextDeepGroup } from '../api/study'
+  import { generatePassage, getSessionReport } from '../api/agent'
+  import { getReviewQueue } from '../api/review'
 import { useAgentStore } from '../stores/agent'
 import { useUserStore } from '../stores/user'
+import { classifySpelling } from '../utils/string'
 import { useNetwork } from '../composables/useNetwork'
 import { useFatigueCheck } from '../composables/useFatigueCheck'
 import TiMoFAB from '../components/agent/TiMoFAB.vue'
@@ -320,6 +340,7 @@ const loading = ref(false)
 const words = ref([])
 const phase = ref('learn') // 'learn' | 'groupMatch' | 'groupPassage' | 'spell' | 'summary'
 const sessionDone = ref(false)
+const coachSummary = ref('')
 const submitting = ref(false)
 const sessionStartTime = ref(Date.now())
 
@@ -391,6 +412,8 @@ const completeHint = ref('')
 const completeAnswer = ref('')
 const completeSubmitted = ref(false)
 const completeCorrect = ref(false)
+// 'correct' | 'typo' | 'wrong' — drives the result message style
+const completeResultClass = ref('wrong')
 const hintLevel = ref(0)
 const hintTotalAccum = ref(0)
 const completeInput = ref(null)
@@ -1000,18 +1023,28 @@ function showMoreHints() {
 }
 
 function checkComplete() {
-  const answer = completeAnswer.value.trim().toLowerCase()
   const currentSpellWord = spellQueue.value[spellIndex.value]
   const word = currentSpellWord ? currentSpellWord.word : ''
-  const correct = answer === word.toLowerCase()
+  const classification = classifySpelling(completeAnswer.value, word)
+  const correct = classification === 'correct'
+  const typo = classification === 'typo'
   completeSubmitted.value = true
   completeCorrect.value = correct
+  completeResultClass.value = classification
 
+  // Levenshtein-1 typo gets partial credit instead of zero.
+  // Without hints: correct=4, typo=2, wrong=0
+  // With 1 hint:    correct=2, typo=1, wrong=0
+  // With 2 hints:   correct=1, typo=0, wrong=0
   let s5 = 0
   if (correct) {
     if (hintLevel.value <= 0) s5 = 4
     else if (hintLevel.value === 1) s5 = 2
     else s5 = 1
+  } else if (typo) {
+    if (hintLevel.value <= 0) s5 = 2
+    else if (hintLevel.value === 1) s5 = 1
+    else s5 = 0
   }
 
   // 找到该词在 words 数组中的原始索引
@@ -1025,8 +1058,8 @@ function checkComplete() {
     }
   }
 
-  // 错误强化：答错的词加入重试队列
-  if (!correct && currentSpellWord) {
+  // 错误强化：完全答错（非 typo）的词加入重试队列
+  if (!correct && !typo && currentSpellWord) {
     spellRetryQueue.value.push(currentSpellWord)
   }
 
@@ -1047,7 +1080,7 @@ function checkComplete() {
       // 全部完成
       enterSummary()
     }
-  }, 800)
+  }, typo ? 1500 : 800)
 }
 
 // ===== Phase 5: 组总结 (Step 6) =====
@@ -1072,9 +1105,34 @@ async function submitGroupResults() {
         dwell_time_ms: scores.dwellTimeMs || 0
       }
     })
-    await submitContextDeepGroup({ group_results: groupResults })
-    sessionDone.value = true
-  } catch (e) {
+      await submitContextDeepGroup({ group_results: groupResults })
+      sessionDone.value = true
+
+      // Generate TiMo coach summary
+      try {
+        const correctCount = wordScores.value.filter(s => getCompositeGrade(s) >= 3.0).length
+        const wrongWords = words.value.filter((w, i) => {
+          const s = wordScores.value[i]
+          return !s || getCompositeGrade(s) < 3.0
+        })
+        const reportRes = await getSessionReport({
+          studyMode: 'context_deep',
+          totalWords: words.value.length,
+          correctCount,
+          wrongCount: words.value.length - correctCount,
+          elapsedMs: elapsedMs.value,
+          wordTexts: words.value.map(w => w.word),
+          wrongWordTexts: wrongWords.map(w => w.word)
+        })
+        if (reportRes.data?.summary) {
+          coachSummary.value = reportRes.data.summary
+          agentStore.addMessage({ role: 'assistant', content: reportRes.data.summary, actions: reportRes.data.actions || [] })
+          if (reportRes.data.tiMoState) {
+            agentStore.setTiMoState(reportRes.data.tiMoState, 5000)
+          }
+        }
+      } catch { /* summary is non-critical */ }
+    } catch (e) {
     ElMessage.error('提交失败，请检查网络后重试')
   }
   submitting.value = false
@@ -1095,7 +1153,7 @@ function retryWeak() {
   generatePassage(words.value.map(w => w.word)).then(res => {
     passageData.value = res.data
     passageDataReady.value = true
-  }).catch(() => {}).finally(() => { passageLoading.value = false })
+  }).catch(() => { ElMessage.warning('短文生成失败，将使用备用短文') }).finally(() => { passageLoading.value = false })
 }
 
 // ===== 加载数据 =====
@@ -1158,7 +1216,7 @@ async function loadWords() {
       generatePassage(wordTexts).then(res => {
         passageData.value = res.data
         passageDataReady.value = true
-      }).catch(() => {}).finally(() => { passageLoading.value = false })
+      }).catch(() => { ElMessage.warning('短文生成失败，将使用备用短文') }).finally(() => { passageLoading.value = false })
     }
   } catch {
     words.value = []
@@ -1326,12 +1384,29 @@ onBeforeUnmount(() => {
   background: var(--color-bg-hover); border-radius: var(--radius-lg); width: 100%; font-weight: 600;
 }
 .group-passage-box { min-height: 120px; }
+.passage-title {
+  font-size: 18px;
+  font-weight: 800;
+  margin-bottom: 8px;
+  color: var(--color-text-primary);
+}
+.passage-translation {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: 12px;
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  text-align: left;
+  line-height: 1.7;
+}
 .passage-loading {
   font-size: 14px; color: var(--color-text-muted); font-weight: 600;
   padding: 8px 16px; background: var(--color-orange-light); border-radius: var(--radius-full);
   margin-bottom: 8px; animation: pulse 1.5s ease-in-out infinite;
 }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+@keyframes fadeSlideUp { 0%{opacity:0;transform:translateY(10px)} 100%{opacity:1;transform:translateY(0)} }
 .blank-input { width: 140px; margin: 0 4px; }
 .blank-input :deep(.el-input__wrapper:focus-within) { box-shadow: 0 0 0 3px var(--color-primary-lighter) !important; }
 .hint-highlight-input :deep(.el-input__wrapper) { box-shadow: 0 0 0 3px var(--color-orange) !important; border-color: var(--color-orange) !important; }
@@ -1399,6 +1474,27 @@ onBeforeUnmount(() => {
 .blank-result { font-size: 18px; font-weight: 800; padding: 12px 24px; border-radius: var(--radius-full); }
 .blank-result.correct { color: var(--color-primary-dark); background: var(--color-primary-bg); }
 .blank-result.wrong { color: var(--color-red-dark); background: var(--color-red-light); }
+.blank-result.typo {
+  color: var(--color-orange-dark); background: var(--color-orange-light);
+  border: 2px solid var(--color-orange);
+}
+.blank-result.typo strong { color: var(--color-orange-dark); font-weight: 900; }
+
+/* 顽固词徽章 — 提示用户这个词曾经难倒过 */
+.stubborn-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-bottom: 12px; padding: 6px 14px;
+  background: linear-gradient(135deg, #fff4e6, #ffe4c4);
+  color: var(--color-orange-dark);
+  border: 2px solid var(--color-orange);
+  border-radius: var(--radius-full);
+  font-size: 13px; font-weight: 800;
+  animation: stubbornPulse 2s ease-in-out infinite;
+}
+@keyframes stubbornPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(255, 152, 0, 0); }
+}
 
 /* Phase 5: 总结 */
 .session-done { padding-top: 20px; }
@@ -1414,8 +1510,21 @@ onBeforeUnmount(() => {
 .done-stat-value.blue { color: var(--color-blue-dark); }
 .done-stat-value.green { color: var(--color-primary-dark); }
 .done-stat-value.orange { color: var(--color-orange-dark); }
-.done-stat-label { font-size: 12px; font-weight: 700; color: var(--color-text-secondary); margin-top: 4px; }
-.done-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .done-stat-label { font-size: 12px; font-weight: 700; color: var(--color-text-secondary); margin-top: 4px; }
+
+  /* TiMo 教练点评 */
+  .coach-summary {
+    margin: 20px 0; padding: 14px 16px;
+    background: linear-gradient(135deg, #E3F2FD, #BBDEFB);
+    border: 2px solid #2196F3; border-radius: var(--radius-md);
+    text-align: left; animation: fadeSlideUp 0.4s ease;
+  }
+  .coach-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .coach-icon { font-size: 18px; }
+  .coach-label { font-size: 13px; font-weight: 800; color: #1565C0; }
+  .coach-text { font-size: 14px; color: var(--color-text-primary); line-height: 1.6; margin: 0; }
+
+  .done-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 
 .weak-section {
   margin-bottom: 20px; padding: 16px; background: var(--color-orange-light);
