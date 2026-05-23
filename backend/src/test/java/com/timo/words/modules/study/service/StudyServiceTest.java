@@ -1,12 +1,15 @@
 package com.timo.words.modules.study.service;
 
 import com.timo.words.algorithm.fsrs.Scheduler;
+import com.timo.words.modules.calendar.service.CalendarService;
 import com.timo.words.modules.study.entity.QuizRecord;
 import com.timo.words.modules.study.entity.UserWordBind;
 import com.timo.words.modules.study.repository.QuizRecordRepository;
 import com.timo.words.modules.study.repository.UserWordBindRepository;
 import com.timo.words.modules.user.entity.User;
 import com.timo.words.modules.user.repository.UserRepository;
+import com.timo.words.modules.word.entity.Word;
+import com.timo.words.modules.word.repository.WordRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,9 +30,11 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class StudyServiceTest {
 
+    @Mock private CalendarService calendarService;
     @Mock private UserWordBindRepository userWordBindRepository;
     @Mock private QuizRecordRepository quizRecordRepository;
     @Mock private UserRepository userRepository;
+    @Mock private WordRepository wordRepository;
 
     @InjectMocks private StudyService studyService;
 
@@ -75,13 +80,14 @@ class StudyServiceTest {
         when(userWordBindRepository.findByUserIdAndWordId(1L, 100L)).thenReturn(Optional.of(existingBind));
         when(quizRecordRepository.countByUserIdAndWordIdAndGradeGreaterThanEqual(1L, 100L, 3.0)).thenReturn(0L);
         when(quizRecordRepository.countByUserIdAndWordId(1L, 100L)).thenReturn(0L);
+        when(wordRepository.findWordLengthById(100L)).thenReturn(Optional.of(6));
 
         // Act
         StudyService.SubmitResponse resp = studyService.submitQuickMemory(req);
 
-        // Assert: response structure
+        // Assert: response structure (5-tier grade: 3000ms RT → 3.0)
         assertNotNull(resp);
-        assertEquals(4.0, resp.getGrade(), 0.001, "Perfect recognition + verification should yield grade 4.0");
+        assertEquals(3.0, resp.getGrade(), 0.001, "RT=3000ms → 3.0 (slow but accurate)");
         assertTrue(resp.getNewStability() > 0, "New stability should be positive");
         assertTrue(resp.getNewDifficulty() > 0, "New difficulty should be positive");
         assertEquals(1.0, resp.getNewRetrievability(), 0.001, "Post-review retrievability should be 1.0");
@@ -101,7 +107,7 @@ class StudyServiceTest {
         assertEquals(1L, savedRecord.getUserId());
         assertEquals(100L, savedRecord.getWordId());
         assertEquals("quick_memory", savedRecord.getStudyMode());
-        assertEquals(4.0, savedRecord.getGrade(), 0.001);
+        assertEquals(3.0, savedRecord.getGrade(), 0.001);
         assertEquals(3000, savedRecord.getReactionTimeMs());
     }
 
@@ -119,6 +125,7 @@ class StudyServiceTest {
         when(userWordBindRepository.findByUserIdAndWordId(1L, 100L)).thenReturn(Optional.of(existingBind));
         when(quizRecordRepository.countByUserIdAndWordIdAndGradeGreaterThanEqual(1L, 100L, 3.0)).thenReturn(0L);
         when(quizRecordRepository.countByUserIdAndWordId(1L, 100L)).thenReturn(0L);
+        when(wordRepository.findWordLengthById(100L)).thenReturn(Optional.of(6));
 
         // Act
         StudyService.SubmitResponse resp = studyService.submitQuickMemory(req);
@@ -145,6 +152,7 @@ class StudyServiceTest {
         when(userWordBindRepository.findByUserIdAndWordId(1L, 100L)).thenReturn(Optional.of(existingBind));
         when(quizRecordRepository.countByUserIdAndWordIdAndGradeGreaterThanEqual(1L, 100L, 3.0)).thenReturn(0L);
         when(quizRecordRepository.countByUserIdAndWordId(1L, 100L)).thenReturn(2L);
+        when(wordRepository.findWordLengthById(100L)).thenReturn(Optional.of(6));
 
         // Act
         StudyService.SubmitResponse resp = studyService.submitQuickMemory(req);
@@ -213,6 +221,10 @@ class StudyServiceTest {
         when(userWordBindRepository.findByUserIdAndWordIdIn(eq(1L), anyCollection())).thenReturn(List.of(bind100, bind200));
         when(quizRecordRepository.countByUserIdAndWordIdIn(eq(1L), anyCollection())).thenReturn(List.of());
         when(quizRecordRepository.countByUserIdAndWordIdInAndGradeGte(eq(1L), anyCollection(), eq(3.0))).thenReturn(List.of());
+        when(wordRepository.findWordLengthsByIds(anyList())).thenReturn(List.of(
+                new Object[]{100L, 6},
+                new Object[]{200L, 8}
+        ));
 
         // Act
         studyService.submitContextDeepGroup(req);
@@ -235,5 +247,121 @@ class StudyServiceTest {
         // Assert: no interactions
         verify(userWordBindRepository, never()).save(any());
         verify(quizRecordRepository, never()).save(any());
+    }
+
+    // --- submitReverseRecall ---
+
+    private Word reverseRecallWord(String text) {
+        Word w = new Word();
+        w.setId(100L);
+        w.setWord(text);
+        return w;
+    }
+
+    @Test
+    void testSubmitReverseRecall_correctSpelling_noHint_grade4() {
+        // Arrange: user types "receive" — exact match, no hint
+        StudyService.ReverseRecallSubmitRequest req = new StudyService.ReverseRecallSubmitRequest();
+        req.setUserId(1L);
+        req.setWordId(100L);
+        req.setUserInput("receive");
+        req.setReactionTimeMs(2500);
+        req.setHintLevel(0);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userWordBindRepository.findByUserIdAndWordId(1L, 100L)).thenReturn(Optional.of(existingBind));
+        when(wordRepository.findById(100L)).thenReturn(Optional.of(reverseRecallWord("receive")));
+        when(quizRecordRepository.countByUserIdAndWordIdAndGradeGreaterThanEqual(1L, 100L, 3.0)).thenReturn(2L);
+        when(quizRecordRepository.countByUserIdAndWordId(1L, 100L)).thenReturn(3L);
+
+        // Act
+        StudyService.SubmitResponse resp = studyService.submitReverseRecall(req);
+
+        // Assert
+        assertEquals(4.0, resp.getGrade(), 0.001, "Exact match with no hint should yield grade 4.0");
+        assertTrue(resp.getNewStability() > 0);
+        assertNotNull(resp.getNextReviewTime());
+
+        verify(quizRecordRepository, times(1)).save(recordCaptor.capture());
+        QuizRecord saved = recordCaptor.getValue();
+        assertEquals("reverse_recall", saved.getStudyMode());
+        assertEquals(4.0, saved.getGrade(), 0.001);
+        assertNotNull(saved.getStepResults(), "stepResults should encode distance + hintLevel");
+    }
+
+    @Test
+    void testSubmitReverseRecall_correctWithFirstLetterHint_grade3_5() {
+        // Arrange: user typed correctly but only after revealing first letter
+        StudyService.ReverseRecallSubmitRequest req = new StudyService.ReverseRecallSubmitRequest();
+        req.setUserId(1L);
+        req.setWordId(100L);
+        req.setUserInput("ambition");
+        req.setReactionTimeMs(4200);
+        req.setHintLevel(1);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userWordBindRepository.findByUserIdAndWordId(1L, 100L)).thenReturn(Optional.of(existingBind));
+        when(wordRepository.findById(100L)).thenReturn(Optional.of(reverseRecallWord("ambition")));
+        when(quizRecordRepository.countByUserIdAndWordIdAndGradeGreaterThanEqual(1L, 100L, 3.0)).thenReturn(1L);
+        when(quizRecordRepository.countByUserIdAndWordId(1L, 100L)).thenReturn(2L);
+
+        StudyService.SubmitResponse resp = studyService.submitReverseRecall(req);
+
+        assertEquals(3.5, resp.getGrade(), 0.001, "Correct after first-letter hint → grade 3.5");
+    }
+
+    @Test
+    void testSubmitReverseRecall_singleLetterTypo_grade2_5() {
+        // Arrange: target = "receive", user typed "receiv" — missing final 'e' (d=1, single deletion)
+        StudyService.ReverseRecallSubmitRequest req = new StudyService.ReverseRecallSubmitRequest();
+        req.setUserId(1L);
+        req.setWordId(100L);
+        req.setUserInput("receiv");
+        req.setReactionTimeMs(5500);
+        req.setHintLevel(0);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userWordBindRepository.findByUserIdAndWordId(1L, 100L)).thenReturn(Optional.of(existingBind));
+        when(wordRepository.findById(100L)).thenReturn(Optional.of(reverseRecallWord("receive")));
+        when(quizRecordRepository.countByUserIdAndWordIdAndGradeGreaterThanEqual(1L, 100L, 3.0)).thenReturn(0L);
+        when(quizRecordRepository.countByUserIdAndWordId(1L, 100L)).thenReturn(1L);
+
+        StudyService.SubmitResponse resp = studyService.submitReverseRecall(req);
+
+        assertEquals(2.5, resp.getGrade(), 0.001, "Single-letter typo (d=1) → grade 2.5 (partial credit)");
+    }
+
+    @Test
+    void testSubmitReverseRecall_blankInput_grade1() {
+        // Arrange: user leaves the box blank
+        StudyService.ReverseRecallSubmitRequest req = new StudyService.ReverseRecallSubmitRequest();
+        req.setUserId(1L);
+        req.setWordId(100L);
+        req.setUserInput("");
+        req.setReactionTimeMs(8000);
+        req.setHintLevel(0);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userWordBindRepository.findByUserIdAndWordId(1L, 100L)).thenReturn(Optional.of(existingBind));
+        when(wordRepository.findById(100L)).thenReturn(Optional.of(reverseRecallWord("receive")));
+        when(quizRecordRepository.countByUserIdAndWordIdAndGradeGreaterThanEqual(1L, 100L, 3.0)).thenReturn(0L);
+        when(quizRecordRepository.countByUserIdAndWordId(1L, 100L)).thenReturn(0L);
+
+        StudyService.SubmitResponse resp = studyService.submitReverseRecall(req);
+
+        assertEquals(1.0, resp.getGrade(), 0.001, "Blank input → grade 1.0");
+    }
+
+    @Test
+    void testReverseRecallGradeMapping_pureFunction() {
+        // Direct exercise of the pure mapping — no repository / FSRS noise.
+        assertEquals(4.0, StudyService.mapReverseRecallGrade(0, 0), 0.001);
+        assertEquals(3.5, StudyService.mapReverseRecallGrade(0, 1), 0.001);
+        assertEquals(3.0, StudyService.mapReverseRecallGrade(0, 2), 0.001);
+        assertEquals(3.0, StudyService.mapReverseRecallGrade(0, 5), 0.001); // hint >= 2 clamps to 3.0
+        assertEquals(2.5, StudyService.mapReverseRecallGrade(1, 0), 0.001);
+        assertEquals(2.5, StudyService.mapReverseRecallGrade(1, 1), 0.001); // typo dominates hint
+        assertEquals(1.0, StudyService.mapReverseRecallGrade(2, 0), 0.001);
+        assertEquals(1.0, StudyService.mapReverseRecallGrade(5, 1), 0.001);
     }
 }

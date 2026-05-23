@@ -10,7 +10,7 @@ public final class GradeMapper {
     private GradeMapper() {}
 
     /**
-     * Quick Memory mode: discrete mapping.
+     * Quick Memory mode: discrete mapping (legacy, kept for backward compat).
      * recognized + verifiedCorrect → 4.0
      * recognized + wrong → 2.0
      * not recognized → 1.0
@@ -18,6 +18,28 @@ public final class GradeMapper {
     public static double mapQuickMemory(boolean recognized, boolean verifiedCorrect) {
         if (!recognized) return 1.0;
         return verifiedCorrect ? 4.0 : 2.0;
+    }
+
+    /**
+     * Quick Memory 5-tier mapping with reaction-time differentiation.
+     * Two users both clicking "认识 + verify 正确" but with different reaction times
+     * deserve different FSRS stability impact:
+     *
+     *   not recognized                                → 1.0
+     *   recognized + wrong verify                     → 2.0
+     *   recognized + correct verify + RT > 2500ms     → 3.0 (准确但偏慢，可能模糊记忆)
+     *   recognized + correct verify + 1500 < RT ≤ 2500 → 3.5 (中等速度，标准掌握)
+     *   recognized + correct verify + RT ≤ 1500ms     → 4.0 (快速准确，熟练掌握)
+     *
+     * Thresholds are raw RT (not normalized by word length) because they reflect
+     * objective perceived confidence; word-length normalization happens in DF.
+     */
+    public static double mapQuickMemory(boolean recognized, boolean verifiedCorrect, int reactionTimeMs) {
+        if (!recognized) return 1.0;
+        if (!verifiedCorrect) return 2.0;
+        if (reactionTimeMs <= 1500) return 4.0;
+        if (reactionTimeMs <= 2500) return 3.5;
+        return 3.0;
     }
 
     /**

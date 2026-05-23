@@ -28,6 +28,41 @@ class GradeMapperTest {
         assertEquals(1.0, GradeMapper.mapQuickMemory(false, true));
     }
 
+    // --- Quick Memory 5-tier RT-aware Tests ---
+
+    @Test
+    void quickMemory_fastCorrect_returns4() {
+        // RT ≤ 1500ms → 4.0
+        assertEquals(4.0, GradeMapper.mapQuickMemory(true, true, 1200));
+        assertEquals(4.0, GradeMapper.mapQuickMemory(true, true, 1500));
+    }
+
+    @Test
+    void quickMemory_midSpeedCorrect_returns3_5() {
+        // 1500 < RT ≤ 2500 → 3.5
+        assertEquals(3.5, GradeMapper.mapQuickMemory(true, true, 2000));
+        assertEquals(3.5, GradeMapper.mapQuickMemory(true, true, 2500));
+    }
+
+    @Test
+    void quickMemory_slowCorrect_returns3() {
+        // RT > 2500 → 3.0
+        assertEquals(3.0, GradeMapper.mapQuickMemory(true, true, 2800));
+        assertEquals(3.0, GradeMapper.mapQuickMemory(true, true, 5000));
+    }
+
+    @Test
+    void quickMemory_recognizedButWrong_anyRt_returns2() {
+        assertEquals(2.0, GradeMapper.mapQuickMemory(true, false, 500));
+        assertEquals(2.0, GradeMapper.mapQuickMemory(true, false, 3000));
+    }
+
+    @Test
+    void quickMemory_notRecognized_anyRt_returns1() {
+        assertEquals(1.0, GradeMapper.mapQuickMemory(false, true, 500));
+        assertEquals(1.0, GradeMapper.mapQuickMemory(false, false, 5000));
+    }
+
     // --- Context Deep Tests ---
 
     @Test

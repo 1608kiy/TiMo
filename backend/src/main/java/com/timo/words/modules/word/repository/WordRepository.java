@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface WordRepository extends JpaRepository<Word, Long>, JpaSpecificationExecutor<Word> {
 
@@ -20,10 +21,18 @@ public interface WordRepository extends JpaRepository<Word, Long>, JpaSpecificat
     @Query("SELECT w FROM Word w WHERE LOWER(w.word) IN :words")
     List<Word> findByWordIn(@Param("words") List<String> words);
 
+    Optional<Word> findFirstByWordIgnoreCase(String word);
+
     long countByExamType(String examType);
 
     List<Word> findByExamTypeIn(List<String> examTypes);
 
     @Query("SELECT w.examType, COUNT(w) FROM Word w GROUP BY w.examType")
     List<Object[]> countByExamTypeGroup();
+
+    @Query("SELECT LENGTH(w.word) FROM Word w WHERE w.id = :id")
+    Optional<Integer> findWordLengthById(@Param("id") Long id);
+
+    @Query("SELECT w.id, LENGTH(w.word) FROM Word w WHERE w.id IN :ids")
+    List<Object[]> findWordLengthsByIds(@Param("ids") List<Long> ids);
 }

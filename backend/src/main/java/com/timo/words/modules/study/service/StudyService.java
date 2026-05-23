@@ -1,5 +1,6 @@
 package com.timo.words.modules.study.service;
 
+import com.timo.words.algorithm.common.EditDistance;
 import com.timo.words.algorithm.fsrs.ErrorReinforcementHandler;
 import com.timo.words.algorithm.fsrs.ReviewResult;
 import com.timo.words.algorithm.fsrs.Scheduler;
@@ -12,6 +13,8 @@ import com.timo.words.modules.study.repository.QuizRecordRepository;
 import com.timo.words.modules.study.repository.UserWordBindRepository;
 import com.timo.words.modules.user.entity.User;
 import com.timo.words.modules.user.repository.UserRepository;
+import com.timo.words.modules.word.entity.Word;
+import com.timo.words.modules.word.repository.WordRepository;
 import com.timo.words.modules.calendar.service.CalendarService;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -33,7 +36,12 @@ public class StudyService {
     private final UserWordBindRepository userWordBindRepository;
     private final QuizRecordRepository quizRecordRepository;
     private final UserRepository userRepository;
+    private final WordRepository wordRepository;
     private final CalendarService calendarService;
+
+    // Default for the rare case where a word entity is missing (deleted concurrently).
+    // BASELINE_WORD_LENGTH from DF; using 6 keeps RT normalization neutral.
+    private static final int DEFAULT_WORD_LENGTH = 6;
 
     // --- DTOs ---
 
@@ -104,6 +112,38 @@ public class StudyService {
         private boolean spellingCorrect;
     }
 
+    @Data
+    public static class ReverseRecallSubmitRequest {
+        private Long userId;
+        private Long wordId;
+        private String userInput;
+        private int reactionTimeMs;
+        /**
+         * Hint level used during this attempt:
+         *   0 = no hint
+         *   1 = first letter revealed
+         *   2 = first half (ceil(L/2) letters) revealed
+         */
+        private int hintLevel;
+    }
+
+    @Data
+    public static class ReverseRecallCandidate {
+        private Long wordId;
+        private String word;
+        private String phonetic;
+        private List<MeaningView> meanings;
+        private Double stability;
+        private Integer reviewCount;
+
+        @Data
+        public static class MeaningView {
+            private Long id;
+            private String meaning;
+            private String partOfSpeech;
+        }
+    }
+
     // --- Service Methods ---
 
     @Transactional
@@ -111,22 +151,26 @@ public class StudyService {
         User user = getUser(req.getUserId());
         UserWordBind bind = getOrCreateBind(req.getUserId(), req.getWordId());
 
-        double grade = GradeMapper.mapQuickMemory(req.isRecognized(), req.isVerifiedCorrect());
+        // 5-tier grade with RT differentiation (was 3-tier 4/2/1).
+        double grade = GradeMapper.mapQuickMemory(req.isRecognized(), req.isVerifiedCorrect(),
+                req.getReactionTimeMs());
         double reactionTimeSec = req.getReactionTimeMs() / 1000.0;
+        int wordLength = getWordLength(req.getWordId());
 
         int correctCount = (int) quizRecordRepository.countByUserIdAndWordIdAndGradeGreaterThanEqual(
                 req.getUserId(), req.getWordId(), 3.0);
         long totalAttempts = quizRecordRepository.countByUserIdAndWordId(req.getUserId(), req.getWordId());
-        double historicalRate = totalAttempts > 0 ? (double) correctCount / totalAttempts : 0.0;
 
         ReviewResult result = Scheduler.review(
                 bind, grade, "quick_memory",
                 reactionTimeSec, 0,
-                correctCount, historicalRate,
-                user.getMuInit(), user.getSigmaInit());
+                correctCount, totalAttempts,
+                user.getMuInit(), user.getSigmaInit(),
+                wordLength);
 
         applyResult(bind, result, true);
         ErrorReinforcementHandler.apply(bind, "quick_memory", grade, null, 0, true, false);
+        updateMasteredStatus(bind, grade);
         userWordBindRepository.save(bind);
 
         saveQuizRecord(req.getUserId(), req.getWordId(), "quick_memory",
@@ -149,23 +193,25 @@ public class StudyService {
 
         double grade = GradeMapper.mapContextDeep(req.getS2(), req.getS3(), req.getS4(), req.getS5());
         double reactionTimeSec = req.getReactionTimeMs() / 1000.0;
+        int wordLength = getWordLength(req.getWordId());
 
         int correctCount = (int) quizRecordRepository.countByUserIdAndWordIdAndGradeGreaterThanEqual(
                 req.getUserId(), req.getWordId(), 3.0);
         long totalAttempts = quizRecordRepository.countByUserIdAndWordId(req.getUserId(), req.getWordId());
-        double historicalRate = totalAttempts > 0 ? (double) correctCount / totalAttempts : 0.0;
 
         ReviewResult result = Scheduler.review(
                 bind, grade, "context_deep",
                 reactionTimeSec, req.getHintTotal(),
-                correctCount, historicalRate,
-                user.getMuInit(), user.getSigmaInit());
+                correctCount, totalAttempts,
+                user.getMuInit(), user.getSigmaInit(),
+                wordLength);
 
         boolean suppressReviewCount = req.getHintTotal() >= 4;
         applyResult(bind, result, !suppressReviewCount);
         ErrorReinforcementHandler.apply(bind, "context_deep", grade,
                 new int[]{req.getS2(), req.getS3(), req.getS4(), req.getS5()},
                 req.getHintTotal(), true, false);
+        updateMasteredStatus(bind, grade);
         userWordBindRepository.save(bind);
 
         String stepResults = String.format("{\"s2\":%d,\"s3\":%d,\"s4\":%d,\"s5\":%d}",
@@ -194,13 +240,17 @@ public class StudyService {
         Map<Long, Long> correctCountMap = quizRecordRepository.countByUserIdAndWordIdInAndGradeGte(req.getUserId(), wordIds, 3.0)
                 .stream().collect(Collectors.toMap(r -> (Long) r[0], r -> (Long) r[1]));
 
+        // Batch-fetch word lengths (single round-trip) for RT normalization
+        Map<Long, Integer> wordLengthMap = getWordLengthsByIds(wordIds);
+
         for (ContextDeepGroupItem item : req.getGroupResults()) {
             long totalAttempts = totalAttemptsMap.getOrDefault(item.getWordId(), 0L);
             int correctCount = correctCountMap.getOrDefault(item.getWordId(), 0L).intValue();
+            int wordLength = wordLengthMap.getOrDefault(item.getWordId(), DEFAULT_WORD_LENGTH);
             processContextDeepWord(user, bindMap, item.getWordId(),
                     item.getS2Raw(), item.getS3Raw(), item.getS4Raw(), item.getS5Raw(),
                     item.getHintTotal(), item.getDwellTimeMs(),
-                    correctCount, totalAttempts);
+                    correctCount, totalAttempts, wordLength);
         }
 
         // Batch save all modified binds
@@ -212,7 +262,7 @@ public class StudyService {
     private void processContextDeepWord(User user, Map<Long, UserWordBind> bindMap,
                                          Long wordId, int s2, int s3, int s4, int s5,
                                          int hintTotal, int reactionTimeMs,
-                                         int correctCount, long totalAttempts) {
+                                         int correctCount, long totalAttempts, int wordLength) {
         UserWordBind bind = bindMap.computeIfAbsent(wordId, wid -> {
             UserWordBind newBind = new UserWordBind();
             newBind.setUserId(user.getId());
@@ -229,18 +279,18 @@ public class StudyService {
         double grade = GradeMapper.mapContextDeep(s2, s3, s4, s5);
         double reactionTimeSec = reactionTimeMs / 1000.0;
 
-        double historicalRate = totalAttempts > 0 ? (double) correctCount / totalAttempts : 0.0;
-
         ReviewResult result = Scheduler.review(
                 bind, grade, "context_deep",
                 reactionTimeSec, hintTotal,
-                correctCount, historicalRate,
-                user.getMuInit(), user.getSigmaInit());
+                correctCount, totalAttempts,
+                user.getMuInit(), user.getSigmaInit(),
+                wordLength);
 
         boolean suppressReviewCount = hintTotal >= 4;
         applyResult(bind, result, !suppressReviewCount);
         ErrorReinforcementHandler.apply(bind, "context_deep", grade,
                 new int[]{s2, s3, s4, s5}, hintTotal, true, false);
+        updateMasteredStatus(bind, grade);
 
         String stepResults = String.format("{\"s2\":%d,\"s3\":%d,\"s4\":%d,\"s5\":%d}", s2, s3, s4, s5);
         saveQuizRecord(user.getId(), wordId, "context_deep",
@@ -273,17 +323,19 @@ public class StudyService {
         int correctCount = (int) quizRecordRepository.countByUserIdAndWordIdAndGradeGreaterThanEqual(
                 req.getUserId(), req.getWordId(), 3.0);
         long totalAttempts = quizRecordRepository.countByUserIdAndWordId(req.getUserId(), req.getWordId());
-        double historicalRate = totalAttempts > 0 ? (double) correctCount / totalAttempts : 0.0;
+        int wordLength = getWordLength(req.getWordId());
 
         ReviewResult result = Scheduler.review(
                 bind, grade, "unified_review",
                 reactionTimeSec, 0,
-                correctCount, historicalRate,
-                user.getMuInit(), user.getSigmaInit());
+                correctCount, totalAttempts,
+                user.getMuInit(), user.getSigmaInit(),
+                wordLength);
 
         applyResult(bind, result, true);
         ErrorReinforcementHandler.apply(bind, "unified_review", grade,
                 null, 0, req.isSpellingCorrect(), req.isSpellingAttempted());
+        updateMasteredStatus(bind, grade);
         userWordBindRepository.save(bind);
 
         saveQuizRecord(req.getUserId(), req.getWordId(), "unified_review",
@@ -295,7 +347,135 @@ public class StudyService {
         return mapResponse(result, bind, grade);
     }
 
-    // --- Internal Helpers ---
+    /**
+     * Reverse-recall mode (Chinese → English active recall).
+     *
+     * The learner sees a Chinese gloss and must type the matching English word.
+     * Grade mapping derives from edit distance + hint level:
+     *
+     *   d == 0  &&  hint == 0      → 4.0   (typed cleanly, no help)
+     *   d == 0  &&  hint == 1      → 3.5   (correct after first-letter hint)
+     *   d == 0  &&  hint >= 2      → 3.0   (correct after half-word hint)
+     *   d == 1                     → 2.5   (single-letter typo — partial credit)
+     *   d >= 2  ||  blank          → 1.0   (essentially didn't know it)
+     *
+     * Shares the DF formula with quick_memory / unified_review (λ_rt × λ_acc) — see
+     * {@link com.timo.words.algorithm.df.DynamicForgettingFactor#REVERSE_RECALL}.
+     */
+    @Transactional
+    public SubmitResponse submitReverseRecall(ReverseRecallSubmitRequest req) {
+        User user = getUser(req.getUserId());
+        UserWordBind bind = getOrCreateBind(req.getUserId(), req.getWordId());
+
+        Word word = wordRepository.findById(req.getWordId())
+                .orElseThrow(() -> new BusinessException(ResultCode.WORD_NOT_FOUND));
+        int distance = EditDistance.normalizedDistance(req.getUserInput(), word.getWord());
+        double grade = mapReverseRecallGrade(distance, req.getHintLevel());
+
+        double reactionTimeSec = req.getReactionTimeMs() / 1000.0;
+        int wordLength = word.getWord() != null ? word.getWord().length() : DEFAULT_WORD_LENGTH;
+
+        int correctCount = (int) quizRecordRepository.countByUserIdAndWordIdAndGradeGreaterThanEqual(
+                req.getUserId(), req.getWordId(), 3.0);
+        long totalAttempts = quizRecordRepository.countByUserIdAndWordId(req.getUserId(), req.getWordId());
+
+        ReviewResult result = Scheduler.review(
+                bind, grade, "reverse_recall",
+                reactionTimeSec, 0,
+                correctCount, totalAttempts,
+                user.getMuInit(), user.getSigmaInit(),
+                wordLength);
+
+        applyResult(bind, result, true);
+        ErrorReinforcementHandler.apply(bind, "reverse_recall", grade, null, 0, true, false);
+        updateMasteredStatus(bind, grade);
+        userWordBindRepository.save(bind);
+
+        String stepResults = String.format("{\"distance\":%d,\"hintLevel\":%d}",
+                distance, req.getHintLevel());
+        saveQuizRecord(req.getUserId(), req.getWordId(), "reverse_recall",
+                grade, null, stepResults, 0, req.getReactionTimeMs());
+
+        // 自动打卡
+        calendarService.autoCheckin(req.getUserId(), 1);
+
+        return mapResponse(result, bind, grade);
+    }
+
+    /**
+     * Pure grade mapping for reverse recall — broken out so tests can exercise it
+     * without mocking the entire FSRS / DF stack.
+     */
+    static double mapReverseRecallGrade(int distance, int hintLevel) {
+        if (distance == 0) {
+            if (hintLevel <= 0) return 4.0;
+            if (hintLevel == 1) return 3.5;
+            return 3.0;
+        }
+        if (distance == 1) return 2.5;
+        return 1.0;
+    }
+
+    /**
+     * Candidate pool for reverse recall sessions. Returns "half-learned" words:
+     * reviewCount ≥ 3, not yet mastered, stability in [1, 21] days — exactly the
+     * memory state where active recall is most productive (too fresh = guessing,
+     * too solid = nothing to gain).
+     */
+    @Transactional(readOnly = true)
+    public List<ReverseRecallCandidate> getReverseRecallCandidates(Long userId, int limit) {
+        int safeLimit = Math.max(1, Math.min(limit, 50));
+        List<UserWordBind> binds = userWordBindRepository.findReverseRecallCandidates(
+                userId, PageRequest.of(0, safeLimit));
+        if (binds.isEmpty()) return List.of();
+
+        List<Long> wordIds = binds.stream().map(UserWordBind::getWordId).collect(Collectors.toList());
+        Map<Long, Word> wordMap = wordRepository.findByIdIn(wordIds).stream()
+                .collect(Collectors.toMap(Word::getId, Function.identity()));
+
+        return binds.stream()
+                .map(b -> {
+                    Word w = wordMap.get(b.getWordId());
+                    if (w == null) return null;
+                    ReverseRecallCandidate c = new ReverseRecallCandidate();
+                    c.setWordId(w.getId());
+                    c.setWord(w.getWord());
+                    c.setPhonetic(w.getPhonetic());
+                    c.setStability(b.getStability());
+                    c.setReviewCount(b.getReviewCount());
+                    if (w.getMeanings() != null) {
+                        c.setMeanings(w.getMeanings().stream().map(m -> {
+                            ReverseRecallCandidate.MeaningView mv = new ReverseRecallCandidate.MeaningView();
+                            mv.setId(m.getId());
+                            mv.setMeaning(m.getMeaning());
+                            mv.setPartOfSpeech(m.getPartOfSpeech());
+                            return mv;
+                        }).collect(Collectors.toList()));
+                    }
+                    return c;
+                })
+                .filter(c -> c != null)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Fetch the character length of a word for FSRS RT-normalization.
+     * Uses a length-only projection query to avoid loading the full Word entity.
+     * Falls back to {@link #DEFAULT_WORD_LENGTH} if the word is missing.
+     */
+    private int getWordLength(Long wordId) {
+        return wordRepository.findWordLengthById(wordId).orElse(DEFAULT_WORD_LENGTH);
+    }
+
+    /**
+     * Batch version of {@link #getWordLength(Long)} — single SQL round-trip for a list of IDs.
+     */
+    private Map<Long, Integer> getWordLengthsByIds(List<Long> wordIds) {
+        return wordRepository.findWordLengthsByIds(wordIds).stream()
+                .collect(Collectors.toMap(
+                        r -> (Long) r[0],
+                        r -> ((Number) r[1]).intValue()));
+    }
 
     private User getUser(Long userId) {
         return userRepository.findById(userId)
@@ -333,6 +513,32 @@ public class StudyService {
         }
         bind.setLastStudyTime(LocalDateTime.now());
         // Note: stubborn mark/unmark is handled by ErrorReinforcementHandler
+    }
+
+    /**
+     * Mastered state transition — promote / demote based on current review outcome.
+     *
+     * Promotion criteria (all must hold):
+     *   - grade ≥ 3.5 (this review was a solid success)
+     *   - stability > 21 days (FSRS believes the user can wait 3+ weeks)
+     *   - consecutiveErrors == 0 (no current error streak)
+     *
+     * Demotion: grade < 3.0 clears masteredAt regardless of stability — the user
+     * actually failed, so we should not pretend they have it down.
+     *
+     * Must be called AFTER applyResult and ErrorReinforcementHandler so consecutiveErrors
+     * reflects the current submission.
+     */
+    private void updateMasteredStatus(UserWordBind bind, double grade) {
+        if (grade >= 3.5
+                && bind.getStability() != null && bind.getStability() > 21.0
+                && (bind.getConsecutiveErrors() == null || bind.getConsecutiveErrors() == 0)) {
+            if (bind.getMasteredAt() == null) {
+                bind.setMasteredAt(LocalDateTime.now());
+            }
+        } else if (grade < 3.0 && bind.getMasteredAt() != null) {
+            bind.setMasteredAt(null);
+        }
     }
 
     private void saveQuizRecord(Long userId, Long wordId, String mode,
