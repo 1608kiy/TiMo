@@ -28,7 +28,7 @@ public class AiProviderConfig {
 
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @Column(name = "api_key", nullable = false, length = 500)
-    private String apiKey;
+    private String apiKey;  // WRITE_ONLY: accepts input but never serialized to JSON responses
 
     @Column(nullable = false, length = 100)
     private String model;

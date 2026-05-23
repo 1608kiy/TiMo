@@ -42,6 +42,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import { getOperationLogs } from '../../api/admin'
 
 const logs = ref([])
@@ -64,7 +65,7 @@ async function loadLogs() {
     const res = await getOperationLogs(params)
     logs.value = res.data.content
     total.value = res.data.totalElements
-  } catch (e) { console.warn('Logs load failed:', e) } finally { loading.value = false }
+  } catch (e) { console.warn('Logs load failed:', e); ElMessage.warning('日志加载失败') } finally { loading.value = false }
 }
 
 function formatTime(t) { return t ? t.replace('T', ' ').substring(0, 19) : '-' }

@@ -1,101 +1,69 @@
 # AGENTS.md
 
-本仓库 OpenCode / Codex 智能体的工作指南。
+本文件是针对未来 AI 智能体（如 OpenCode / Codex）的高信噪比工作指南。仅包含那些不看代码极易猜错的核心约定和执行命令。
 
-## 项目简介
+## 🎯 项目概述
 
-AI Agent 驱动的自适应语境化背单词系统（"TiMo"），面向考试备考。全栈：Vue3+Vite+Element Plus 前端，Spring Boot 3.4+JPA+MyBatis 后端，MySQL+Redis。
+自适应语境化背单词系统（"TiMo"）。
+- **全栈架构**：Vue 3 + Vite (前端) / Spring Boot 3.4 + Java 21 (后端)
+- **数据库**：MySQL 8 (主数据) + Redis (缓存/分布式锁)
+- **状态**：**所有十个开发阶段均已完全结束**，全链路闭环已打通并覆盖了单元测试。请勿被任何历史文档中的“第10阶段待完成”误导。
 
-## 快速启动
+## 🚀 启动与运行
 
+### 后端 (端口 8080)
+前置条件：必须有 MySQL 8 和 Redis 运行。
 ```bash
-# 后端（端口 8080）— 需要 MySQL 8（数据库：timo_words）+ Redis 运行
 cd backend
 ./mvnw spring-boot:run
-# 数据库凭据：环境变量 DB_USERNAME/DB_PASSWORD（默认 root/root）。Schema 通过 JPA ddl-auto: update 自动创建。
-# 种子数据：backend/src/main/resources/import-words.sql
+```
+- **数据库账密**：需配置环境变量 `DB_USERNAME` 和 `DB_PASSWORD`（默认均为 `root`）。数据库需提前创建 `timo_words`。
+- **自动建表**：依赖 Spring Data JPA 的 `ddl-auto: update`，不要手写建表 SQL。
+- **初始化数据**：使用 `backend/src/main/resources/import-words.sql`。
 
-# 前端（端口 3000，代理 /api → localhost:8080）
+### 前端 (端口 3000)
+```bash
 cd frontend
 npm install
 npm run dev
 ```
+- **API 代理**：Vite 已配置，所有发向 `/api` 的请求均代理到 `localhost:8080`。
 
-## 测试
+## 🧪 核心测试命令
 
-**前端**（vitest + happy-dom）：
-```bash
-cd frontend
-npm test          # 单次运行
-npm run test:watch
-```
-测试文件位于 `src/**/__tests__/` — API 契约测试、Pinia Store 测试、路由测试。
+不要假设标准的测试命令能直接工作，请**严格使用以下命令**：
 
-**后端**（JUnit 5，使用 H2 内存数据库 `test` 配置）：
-```bash
-cd backend
-./mvnw test -Dspring.profiles.active=test
-```
-21 个测试文件，分布在 algorithm/、modules/、common/、infrastructure/。详见 `src/test/resources/application-test.yml`。
+- **后端测试 (JUnit 5 + H2)**:
+  ```bash
+  cd backend
+  ./mvnw test -Dspring.profiles.active=test
+  ```
+  **极易踩坑**：如果不加 `-Dspring.profiles.active=test`，后端测试将尝试连接本地 MySQL 并可能因库/表不存在而导致测试大面积失败。`test` profile 会激活 H2 内存数据库配置。
 
-无 CI 工作流。
+- **前端测试 (Vitest + happy-dom)**:
+  ```bash
+  cd frontend
+  npm test
+  ```
+  测试文件存放在 `src/**/__tests__/`。
 
-## 核心模式
+## 🏗️ 架构与编码规范
 
-- **双 ORM**：JPA 管理实体，MyBatis 处理复杂查询（两者共存）
-- **FSRS+DF 算法**：`backend/src/main/java/com/timo/words/algorithm/` — 调度器、动态遗忘因子、评分映射、错误强化
-- **三种学习模式**：快速记忆、语境深度学习、统一复习
-- **TiMo 智能体教练**：DeepSeek API 通过 RestTemplate（JSON 模式）。熔断器：3 次失败 → 降级为本地规则
-- **认证**：JWT 存储在 localStorage（键 `token`）。拦截器自动添加 `Bearer` 前缀。401 重定向到 `/login`。
-- **事件**：mitt 事件总线（`src/events/`）驱动 TiMo 头像状态机、API 熔断检测、学习反馈
-- **数据隔离**：`conversation_quiz_log` 不参与 FSRS。智能体标记 `conversation_mastered`（3 天过滤）不修改 S/D 值。
-- **顽固词**：由错误规则自动标记；同模式连续 3 次复习得分 ≥ 3.5 时清除
+### 后端规范 (Java 21)
+1. **Lombok 优先**：项目中已广泛使用 `@Data`、`@Getter`、`@Setter`。**绝不要**手写 Getter/Setter/构造器。
+2. **纯 JPA 驱动**：虽然 `pom.xml` 中保留了 `mybatis-spring-boot-starter`，但**所有现有查询均由 Spring Data JPA 实现**。除非必要，否则优先使用 JPA Repository 开发新查询，不要去创建 MyBatis XML Mappers。
+3. **统一响应**：所有的 Controller 返回体必须包装在 `com.timo.words.common.response.Result` 中。
 
-## 架构
+### 前端规范 (Vue 3)
+1. **网络请求**：所有的后端请求都应当封装在 `src/api/` 中，并使用现有的 `request.js` Axios 实例（该实例已自动处理 `/api` 前缀和 JWT 拦截注入）。
+2. **状态管理**：使用 Pinia (`src/stores/`)，`token` 固化存在 `localStorage.token` 中。
+3. **事件总线**：跨组件（特别是全局组件如 TiMo 头像对话）状态使用 `mitt` 事件总线 (`src/events/`) 进行通信，而非乱用 Prop 钻取。
+4. **组件语法**：统一使用 `<script setup>` 语法和组合式 API。
 
-```
-智能体教练（TiMo）— 编排器（规划、推荐、诊断、调度）
-   ├── 快速记忆         ─┐
-   ├── 语境深度学习     ─┤→ 共享 FSRS+DF 引擎
-   ├── 统一复习         ─┘
-   └── 备考规划（对话驱动）
-```
+### 特殊业务逻辑边界
+- **FSRS + DF 算法**：集中于 `backend/src/main/java/com/timo/words/algorithm/`，不要轻易修改其中的数学公式和 Clamp 限值。
+- **成绩隔离**：普通的背单词记录通过 `quiz_records` 走 FSRS 算法计算遗忘曲线；但是 Agent 对话期间的数据记录在 `conversation_quiz_log`，**此部分成绩刻意隔离，不影响主干 FSRS 参数**（详见架构设计）。
+- **DeepSeek API 熔断**：服务拥有熔断机制（3 次失败自动断开）。若需测试对话模块但在无网络环境，系统会自动走“降级本地规则”，无须过度惊解。
 
-## 前端约定
-
-- `src/api/` 与后端模块 1:1 对应。所有请求通过 `request.js`，带 JWT 拦截器 + `/api` 前缀。
-- Pinia Store：`user.js`、`study.js`、`examPlan.js`、`agent.js`
-- 路由：`needAuth` meta 标志。登录 token 存储在 `localStorage.token`。
-- `@` 别名 → `./src`（在 `vite.config.js` 中配置）
-- Element Plus 使用中文区域设置（`zh-cn`）
-- 桌面优先（1440px 基准，1024px 断点）
-
-## 后端结构
-
-```
-com.timo.words
-├── modules/   auth, user, word, study, examplan, review, agent, statistics, calendar
-├── algorithm/ fsrs, df, scoring
-├── common/    exception, response (Result), constants
-├── config/    Security, Redis, CORS
-└── infrastructure/  ai (DeepSeek), event
-```
-
-## 文档
-
-中文文档位于 `文档/`：
-- `文档/基于 AI Agent 与 FSRS 的自适应语境化背单词系统.txt` — 算法规范
-- `文档/前端规划.txt` / `文档/后端规划.txt` — 完整接口列表
-- `开发进度.md` — 阶段跟踪（1-9 阶段完成，第 10 阶段待完成）
-
-## 智能体 TiMo 素材
-
-`agent形象/` — 5 个 SVG 状态（idle、thinking、alert、success、offline）。由 `tiMoStore` + `TiMoAvatar.vue` 驱动。
-
-## 单词数据
-
-18,142 个单词，涵盖 8 种考试类型，来自 kajweb/dict，使用柯林斯星级 + BNC/COCA 词频（来自 ECDICT）增强。种子数据：`import-words.sql`。
-
-## MCP
-
-通过 `.mcp.json` 使用 Playwright 进行浏览器自动化。
+## 📚 更多参考
+更完整的领域模型、算法公式详情和 API 接口文档，请优先参阅仓库根目录下的 `CLAUDE.md` 及 `文档/` 目录。

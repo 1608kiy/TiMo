@@ -8,7 +8,9 @@ import java.time.LocalDateTime;
 
 @Data
 @Entity
-@Table(name = "ai_call_log")
+@Table(name = "ai_call_log", indexes = {
+        @Index(name = "idx_ai_call_log_created", columnList = "created_at")
+})
 public class AiCallLog {
 
     @Id

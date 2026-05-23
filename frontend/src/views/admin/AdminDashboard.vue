@@ -43,6 +43,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import * as echarts from 'echarts'
+import { ElMessage } from 'element-plus'
 import { getDashboardOverview, getDashboardTrend } from '../../api/admin'
 
 const overview = ref({})
@@ -84,7 +85,7 @@ onMounted(async () => {
   try {
     const [overviewRes, trendRes] = await Promise.all([getDashboardOverview(), getDashboardTrend(7)])
     overview.value = { ...overviewRes.data, aiDailyStats: trendRes.data.aiDailyStats }
-  } catch (e) { console.warn('Dashboard load failed:', e) }
+  } catch (e) { console.warn('Dashboard load failed:', e); ElMessage.warning('仪表盘数据加载失败') }
 
   await nextTick()
   initTrendChart()

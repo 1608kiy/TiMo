@@ -48,11 +48,12 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void initSuperAdmin() {
-        String adminEmail = "tangjunhua@timo.com";
+        String adminEmail = System.getenv().getOrDefault("ADMIN_EMAIL", "tangjunhua@timo.com");
+        String adminPassword = System.getenv().getOrDefault("ADMIN_PASSWORD", "123456789");
         if (userRepository.findByEmail(adminEmail).isEmpty()) {
             User admin = new User();
             admin.setEmail(adminEmail);
-            admin.setPasswordHash(passwordEncoder.encode("123456789"));
+            admin.setPasswordHash(passwordEncoder.encode(adminPassword));
             admin.setNickname("超级管理员");
             admin.setRole("SUPER_ADMIN");
             admin.setStatus("ACTIVE");
@@ -62,7 +63,8 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void initSystemConfigs() {
-        initConfig("admin_secret", "16608117290hj@HJ", "管理员密钥");
+        String adminSecret = System.getenv().getOrDefault("ADMIN_SECRET", "16608117290hj@HJ");
+        initConfig("admin_secret", adminSecret, "管理员密钥");
         initConfig("fsrs_default_stability", "1.0", "FSRS 默认稳定性");
         initConfig("fsrs_default_difficulty", "5.0", "FSRS 默认难度");
         initConfig("cold_start_mu", "8.0", "冷启动 μ 值（秒）");
@@ -85,12 +87,13 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void initDefaultAiProvider() {
+        String defaultApiKey = System.getenv().getOrDefault("DEEPSEEK_API_KEY", "sk-090bfa7c2e4e4ed5a21694993bfd8dd6");
         if (aiProviderConfigRepository.count() == 0) {
             AiProviderConfig config = new AiProviderConfig();
             config.setProviderName("deepseek");
             config.setDisplayName("DeepSeek");
             config.setBaseUrl("https://api.deepseek.com");
-            config.setApiKey("sk-090bfa7c2e4e4ed5a21694993bfd8dd6");
+            config.setApiKey(defaultApiKey);
             config.setModel("deepseek-v4-flash");
             config.setMaxTokens(2048);
             config.setTemperature(0.7);
@@ -98,10 +101,9 @@ public class DataInitializer implements CommandLineRunner {
             aiProviderConfigRepository.save(config);
             log.info("默认 AI 厂商配置已创建: DeepSeek");
         } else {
-            // Fix placeholder API keys
             aiProviderConfigRepository.findAll().forEach(config -> {
                 if (config.getApiKey() != null && config.getApiKey().contains("${")) {
-                    config.setApiKey("sk-090bfa7c2e4e4ed5a21694993bfd8dd6");
+                    config.setApiKey(defaultApiKey);
                     aiProviderConfigRepository.save(config);
                     log.info("已修复厂商 {} 的 API Key", config.getDisplayName());
                 }

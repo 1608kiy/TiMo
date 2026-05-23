@@ -122,11 +122,11 @@ const providerRules = {
 onMounted(() => { loadProviders(); loadStats(); loadLogs() })
 
 async function loadProviders() {
-  try { const res = await getAIProviders(); providers.value = res.data } catch (e) { console.warn('AI providers load failed:', e) }
+  try { const res = await getAIProviders(); providers.value = res.data } catch (e) { console.warn('AI providers load failed:', e); ElMessage.warning('AI 厂商列表加载失败') }
 }
 
 async function loadStats() {
-  try { const res = await getAIStats(30); aiStats.value = res.data } catch (e) { console.warn('AI stats load failed:', e) }
+  try { const res = await getAIStats(30); aiStats.value = res.data } catch (e) { console.warn('AI stats load failed:', e); ElMessage.warning('AI 统计数据加载失败') }
 }
 
 async function loadLogs() {
@@ -137,7 +137,7 @@ async function loadLogs() {
     const res = await getAILogs(params)
     logs.value = res.data.content
     logTotal.value = res.data.totalElements
-  } catch (e) { console.warn('AI logs load failed:', e) } finally { logsLoading.value = false }
+  } catch (e) { console.warn('AI logs load failed:', e); ElMessage.warning('AI 调用日志加载失败') } finally { logsLoading.value = false }
 }
 
 function formatTime(t) { return t ? t.replace('T', ' ').substring(0, 19) : '-' }

@@ -58,10 +58,7 @@ public class AdminAIService {
 
     @Transactional
     public void activateProvider(Long id, Long operatorId, HttpServletRequest request) {
-        providerConfigRepository.findAll().forEach(p -> {
-            p.setIsActive(p.getId().equals(id));
-            providerConfigRepository.save(p);
-        });
+        providerConfigRepository.activateById(id);
         AiProviderConfig config = providerConfigRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(ResultCode.NOT_FOUND));
         logOperation(operatorId, "AI_CONFIG_ACTIVATE", "ai_provider", id,

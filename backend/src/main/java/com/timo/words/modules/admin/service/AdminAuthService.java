@@ -14,6 +14,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -29,7 +30,9 @@ public class AdminAuthService {
 
     public Map<String, Object> verifySecret(String secret, Long userId, HttpServletRequest request) {
         SystemConfig config = systemConfigRepository.findById("admin_secret").orElse(null);
-        if (config == null || !config.getConfigValue().equals(secret)) {
+        if (config == null || !MessageDigest.isEqual(
+                config.getConfigValue().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                secret.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
             throw new BusinessException(ResultCode.ADMIN_SECRET_INVALID);
         }
 

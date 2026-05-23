@@ -177,7 +177,7 @@ onMounted(async () => {
   try {
     const res = await getSystemConfigs()
     res.data.forEach(c => { configs[c.configKey] = c.configValue })
-  } catch (e) { console.warn('Settings load failed:', e) }
+  } catch (e) { console.warn('Settings load failed:', e); ElMessage.warning('系统配置加载失败') }
 })
 
 async function handleSaveAll() {
