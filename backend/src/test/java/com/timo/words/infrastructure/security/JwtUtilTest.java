@@ -11,7 +11,7 @@ class JwtUtilTest {
 
     @BeforeEach
     void setUp() {
-        jwtUtil = new JwtUtil("test-secret-key-for-unit-tests-only-32chars!", 604800000L);
+        jwtUtil = new JwtUtil("test-secret-key-for-unit-tests-only-32chars!", 604800000L, 300000L);
     }
 
     @Test

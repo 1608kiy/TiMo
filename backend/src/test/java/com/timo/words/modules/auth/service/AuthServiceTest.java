@@ -47,7 +47,7 @@ class AuthServiceTest {
             u.setId(1L);
             return u;
         });
-        when(jwtUtil.generateToken(eq(1L), eq("new@test.com"))).thenReturn("token");
+        when(jwtUtil.generateToken(eq(1L), eq("new@test.com"), eq("USER"))).thenReturn("token");
 
         LoginResponse resp = authService.register(req);
 
@@ -70,7 +70,7 @@ class AuthServiceTest {
             u.setId(2L);
             return u;
         });
-        when(jwtUtil.generateToken(eq(2L), eq("user@test.com"))).thenReturn("t");
+        when(jwtUtil.generateToken(eq(2L), eq("user@test.com"), eq("USER"))).thenReturn("t");
 
         LoginResponse resp = authService.register(req);
         assertEquals("user", resp.getNickname());
@@ -119,7 +119,7 @@ class AuthServiceTest {
 
         when(userRepository.findByEmail("user@test.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("pass", "encoded")).thenReturn(true);
-        when(jwtUtil.generateToken(1L, "user@test.com")).thenReturn("tok");
+        when(jwtUtil.generateToken(1L, "user@test.com", "USER")).thenReturn("tok");
 
         LoginResponse resp = authService.login(req);
         assertEquals("tok", resp.getToken());

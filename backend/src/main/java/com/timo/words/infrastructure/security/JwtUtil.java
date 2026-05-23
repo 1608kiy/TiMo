@@ -15,11 +15,14 @@ public class JwtUtil {
 
     private final SecretKey key;
     private final long expiration;
+    private final long impersonateExpiration;
 
     public JwtUtil(@Value("${jwt.secret}") String secret,
-                   @Value("${jwt.expiration}") long expiration) {
+                   @Value("${jwt.expiration}") long expiration,
+                   @Value("${jwt.impersonate-expiration:300000}") long impersonateExpiration) {
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expiration = expiration;
+        this.impersonateExpiration = impersonateExpiration;
     }
 
     public String generateToken(Long userId, String email) {
@@ -50,7 +53,7 @@ public class JwtUtil {
                 .claim("role", role)
                 .claim("targetUserId", targetUserId)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + 5 * 60 * 1000))
+                .expiration(new Date(System.currentTimeMillis() + impersonateExpiration))
                 .signWith(key)
                 .compact();
     }

@@ -6,7 +6,9 @@ import org.springframework.stereotype.Component;
 
 /**
  * Listens for StudyEvent and logs them.
- * Future extensions: fatigue detection, statistics updates, stubborn word tracking.
+ * Fatigue detection is handled by frontend useFatigueCheck composable.
+ * Statistics are computed on-demand via StatisticsService.
+ * Stubborn word marking is handled by FSRS ErrorReinforcementHandler.
  */
 @Slf4j
 @Component
@@ -17,10 +19,6 @@ public class StudyEventListener {
         log.info("StudyEvent received: userId={}, wordId={}, mode={}, grade={}, type={}",
                 event.getUserId(), event.getWordId(), event.getStudyMode(),
                 event.getGrade(), event.getEventType());
-
-        // TODO: extend with fatigue detection (20min cumulative study)
-        // TODO: extend with real-time statistics updates
-        // TODO: extend with stubborn word auto-marking callbacks
     }
 
     @EventListener

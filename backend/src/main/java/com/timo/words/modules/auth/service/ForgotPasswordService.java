@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Random;
+import java.security.SecureRandom;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -47,6 +47,7 @@ public class ForgotPasswordService {
     private static final String CODE_KEY_PREFIX = "pwd:reset:";
     private static final long CODE_TTL_MINUTES = 5;
     private static final int CODE_LENGTH = 6;
+    private volatile JavaMailSender cachedMailSender;
 
     // 邮箱域名 → SMTP 配置 (host, port, 是否SSL)
     private static final Map<String, String[]> SMTP_PROVIDERS = new HashMap<>();
@@ -69,6 +70,7 @@ public class ForgotPasswordService {
     }
 
     private JavaMailSender buildMailSender() {
+        if (cachedMailSender != null) return cachedMailSender;
         if (fromEmail == null || fromEmail.isBlank()) {
             throw new BusinessException(500, "系统邮箱未配置，请设置 MAIL_USERNAME 和 MAIL_PASSWORD 环境变量");
         }
@@ -109,6 +111,7 @@ public class ForgotPasswordService {
         } else {
             props.put("mail.smtp.starttls.enable", "true");
         }
+        cachedMailSender = sender;
         return sender;
     }
 
@@ -153,7 +156,7 @@ public class ForgotPasswordService {
     }
 
     private String generateCode() {
-        Random random = new Random();
+        SecureRandom random = new SecureRandom();
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < CODE_LENGTH; i++) {
             sb.append(random.nextInt(10));

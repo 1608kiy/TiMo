@@ -6,6 +6,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
@@ -15,6 +16,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class RateLimitFilter extends OncePerRequestFilter {
@@ -38,9 +40,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
         String clientIp = getClientIp(request);
         String key = "rate:auth:" + clientIp;
 
-        Long count = stringRedisTemplate.opsForValue().increment(key);
-        if (count != null && count == 1) {
-            stringRedisTemplate.expire(key, WINDOW_SECONDS, TimeUnit.SECONDS);
+        Long count;
+        try {
+            count = stringRedisTemplate.opsForValue().increment(key);
+            if (count != null && count == 1) {
+                stringRedisTemplate.expire(key, WINDOW_SECONDS, TimeUnit.SECONDS);
+            }
+        } catch (Exception e) {
+            log.warn("Redis unavailable, skipping rate limit for auth request: {}", e.getMessage());
+            filterChain.doFilter(request, response);
+            return;
         }
 
         if (count != null && count > MAX_REQUESTS) {
@@ -54,15 +63,19 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     private String getClientIp(HttpServletRequest request) {
-        String ip = request.getHeader("X-Forwarded-For");
-        if (ip != null && !ip.isBlank()) {
-            ip = ip.split(",")[0].trim();
-        }
-        if (ip == null || ip.isBlank()) {
-            ip = request.getHeader("X-Real-IP");
-        }
-        if (ip == null || ip.isBlank()) {
-            ip = request.getRemoteAddr();
+        // Prefer remoteAddr (unspoofable), fall back to headers only behind trusted proxy
+        String ip = request.getRemoteAddr();
+        if (ip != null && (ip.equals("127.0.0.1") || ip.equals("0:0:0:0:0:0:0:1"))) {
+            // Localhost — try headers (likely behind reverse proxy)
+            String forwarded = request.getHeader("X-Forwarded-For");
+            if (forwarded != null && !forwarded.isBlank()) {
+                ip = forwarded.split(",")[0].trim();
+            } else {
+                String realIp = request.getHeader("X-Real-IP");
+                if (realIp != null && !realIp.isBlank()) {
+                    ip = realIp;
+                }
+            }
         }
         return ip;
     }
