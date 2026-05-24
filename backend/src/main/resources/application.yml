@@ -68,7 +68,7 @@ jwt:
 
 # DeepSeek AI
 deepseek:
-  api-key: ${DEEPSEEK_API_KEY:sk-090bfa7c2e4e4ed5a21694993bfd8dd6}
+  api-key: ${DEEPSEEK_API_KEY:your-api-key-here}
   base-url: https://api.deepseek.com
   model: deepseek-v4-flash
   max-tokens: 2048
