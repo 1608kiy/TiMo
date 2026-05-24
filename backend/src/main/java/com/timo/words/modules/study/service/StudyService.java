@@ -15,7 +15,6 @@ import com.timo.words.modules.user.entity.User;
 import com.timo.words.modules.user.repository.UserRepository;
 import com.timo.words.modules.word.entity.Word;
 import com.timo.words.modules.word.repository.WordRepository;
-import com.timo.words.modules.calendar.service.CalendarService;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -37,7 +36,6 @@ public class StudyService {
     private final QuizRecordRepository quizRecordRepository;
     private final UserRepository userRepository;
     private final WordRepository wordRepository;
-    private final CalendarService calendarService;
 
     // Default for the rare case where a word entity is missing (deleted concurrently).
     // BASELINE_WORD_LENGTH from DF; using 6 keeps RT normalization neutral.
@@ -181,8 +179,6 @@ public class StudyService {
         if (bind.getConsecutiveErrors() != null && bind.getConsecutiveErrors() >= 3) {
             resp.setSuggestDeepLearning(true);
         }
-        // 自动打卡
-        calendarService.autoCheckin(req.getUserId(), 1);
         return resp;
     }
 
@@ -255,8 +251,6 @@ public class StudyService {
 
         // Batch save all modified binds
         userWordBindRepository.saveAll(bindMap.values());
-        // 自动打卡
-        calendarService.autoCheckin(req.getUserId(), req.getGroupResults().size());
     }
 
     private void processContextDeepWord(User user, Map<Long, UserWordBind> bindMap,
@@ -341,9 +335,6 @@ public class StudyService {
         saveQuizRecord(req.getUserId(), req.getWordId(), "unified_review",
                 grade, null, null, 0, req.getReactionTimeMs());
 
-        // 自动打卡
-        calendarService.autoCheckin(req.getUserId(), 1);
-
         return mapResponse(result, bind, grade);
     }
 
@@ -395,9 +386,6 @@ public class StudyService {
                 distance, req.getHintLevel());
         saveQuizRecord(req.getUserId(), req.getWordId(), "reverse_recall",
                 grade, null, stepResults, 0, req.getReactionTimeMs());
-
-        // 自动打卡
-        calendarService.autoCheckin(req.getUserId(), 1);
 
         return mapResponse(result, bind, grade);
     }

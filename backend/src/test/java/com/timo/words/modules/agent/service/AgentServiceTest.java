@@ -7,7 +7,6 @@ import com.timo.words.modules.agent.entity.ConversationQuizLog;
 import com.timo.words.modules.agent.repository.ChatMessageRepository;
 import com.timo.words.modules.agent.repository.ChatSessionRepository;
 import com.timo.words.modules.agent.repository.ConversationQuizLogRepository;
-import com.timo.words.modules.calendar.repository.CheckinRecordRepository;
 import com.timo.words.modules.examplan.entity.ExamPlan;
 import com.timo.words.modules.examplan.repository.ExamPlanRepository;
 import com.timo.words.modules.word.entity.Example;
@@ -48,7 +47,6 @@ class AgentServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private UserWordBindRepository userWordBindRepository;
     @Mock private QuizRecordRepository quizRecordRepository;
-    @Mock private CheckinRecordRepository checkinRecordRepository;
     @Mock private ConversationQuizLogRepository conversationQuizLogRepository;
     @Mock private ExamPlanRepository examPlanRepository;
     @Mock private ObjectMapper objectMapper;
@@ -353,7 +351,7 @@ class AgentServiceTest {
         when(quizRecordRepository.countDistinctWordIdByUserIdSince(eq(1L), any(LocalDateTime.class))).thenReturn(2L);
         when(quizRecordRepository.countStudyDaysSince(eq(1L), any(LocalDateTime.class))).thenReturn(2L);
         when(userWordBindRepository.countMasteredByUserId(1L)).thenReturn(5L);
-        when(checkinRecordRepository.findByUserIdOrderByCheckinDateDesc(1L)).thenReturn(Collections.emptyList());
+        when(quizRecordRepository.findDistinctStudyDatesByUserId(1L)).thenReturn(Collections.emptyList());
 
         AgentService.WeeklyReportResponse resp = agentService.getWeeklyReport(1L);
 
@@ -640,7 +638,7 @@ class AgentServiceTest {
         when(userWordBindRepository.countDueByUserId(eq(1L), any())).thenReturn(0L);
         when(userWordBindRepository.countStubbornByUserId(1L)).thenReturn(0L);
         when(quizRecordRepository.findByUserIdAndCreatedAtBetween(eq(1L), any(), any())).thenReturn(Collections.emptyList());
-        when(checkinRecordRepository.findByUserIdOrderByCheckinDateDesc(1L)).thenReturn(Collections.emptyList());
+        when(quizRecordRepository.findDistinctStudyDatesByUserId(1L)).thenReturn(Collections.emptyList());
         when(deepSeekClient.chatFreeForm(anyList())).thenReturn("Hello XiaoMing! Ready to study today?");
 
         AgentService.ChatRequest req = new AgentService.ChatRequest();

@@ -70,7 +70,6 @@ describe('Calendar API exports', () => {
   it('has all calendar functions', async () => {
     const cal = await import('../calendar')
     expect(typeof cal.getMonthly).toBe('function')
-    expect(typeof cal.checkin).toBe('function')
   })
 })
 

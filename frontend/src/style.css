@@ -1,6 +1,7 @@
 /* ============================================
-   TiMo背单词 — 柔和绿 × 留白 × 日本美学
-   Design DNA: 低调、克制、有质感
+   TiMo背单词 — 柔和鼠尾草绿 × Neobrutalist-Lite
+   Design DNA: 厚边框、偏移阴影、克制柔和
+   字重 700-900，主用 stack-shadow（见下方）替代柔光阴影
    ============================================ */
 
 :root {
@@ -41,8 +42,8 @@
   --color-text-primary: #2c2c2c;
   --color-text-regular: #4a4a4a;
   --color-text-secondary: #8a8a8a;
-  --color-text-muted: #b0b0b0;
-  --color-text-placeholder: #cccccc;
+  --color-text-muted: #757575;
+  --color-text-placeholder: #9a9a9a;
 
   /* === Background === */
   --color-bg-page: #faf9f6;
@@ -56,13 +57,20 @@
   --color-border-base: #d4d3ce;
   --color-border-dark: #b0afaa;
 
-  /* === Shadow (whisper-soft) === */
+  /* === Shadow (whisper-soft, legacy — 仅供 Element Plus 覆盖等保留组件使用) === */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.07);
   --shadow-xl: 0 8px 32px rgba(0, 0, 0, 0.08);
   --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.04);
   --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.06);
+
+  /* === Stack Shadow (项目主用 — Neobrutalist-Lite 偏移实心阴影) ===
+     新组件请优先使用 stack-shadow；hover 态通常切换到加深一档（如 sm→md, md→lg）。 */
+  --shadow-stack-sm: 0 2px 0 var(--color-border-lighter);
+  --shadow-stack-md: 0 4px 0 var(--color-border-lighter);
+  --shadow-stack-lg: 0 6px 0 var(--color-border-lighter);
+  --shadow-stack-primary: 0 4px 0 var(--color-primary-dark);
 
   /* === Radius === */
   --radius-sm: 8px;
@@ -424,6 +432,32 @@ a:hover {
 .fade-in-up-delay-6 { animation-delay: 0.48s; opacity: 0; }
 .fade-in-up-delay-7 { animation-delay: 0.56s; opacity: 0; }
 .fade-in-up-delay-8 { animation-delay: 0.64s; opacity: 0; }
+
+/* === Reduced Motion — 全局降噪 ===
+   尊重 prefers-reduced-motion 用户偏好，关闭所有 infinite 装饰性动画，
+   过渡时长压到几乎瞬时；进入/淡入类的一次性动画允许保留但缩短。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* 显式关闭所有 infinite 装饰动画 */
+  .suggestion-logo,
+  .streak-dot,
+  .skeleton-chip,
+  .skeleton-line,
+  [class*="breathe"],
+  [class*="pulse-soft"],
+  [class*="shimmer"],
+  [class*="badge-pop"] {
+    animation: none !important;
+  }
+}
 
 /* === Hover micro-interactions === */
 .hover-gentle {

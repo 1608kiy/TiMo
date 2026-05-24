@@ -1,7 +1,6 @@
 package com.timo.words.modules.study.service;
 
 import com.timo.words.algorithm.fsrs.Scheduler;
-import com.timo.words.modules.calendar.service.CalendarService;
 import com.timo.words.modules.study.entity.QuizRecord;
 import com.timo.words.modules.study.entity.UserWordBind;
 import com.timo.words.modules.study.repository.QuizRecordRepository;
@@ -30,7 +29,6 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class StudyServiceTest {
 
-    @Mock private CalendarService calendarService;
     @Mock private UserWordBindRepository userWordBindRepository;
     @Mock private QuizRecordRepository quizRecordRepository;
     @Mock private UserRepository userRepository;

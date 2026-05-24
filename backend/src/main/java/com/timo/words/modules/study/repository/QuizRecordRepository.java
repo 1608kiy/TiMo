@@ -77,4 +77,7 @@ public interface QuizRecordRepository extends JpaRepository<QuizRecord, Long> {
     List<Object[]> countByStudyModeGlobal();
 
     void deleteByWordIdIn(Collection<Long> wordIds);
+
+    @Query(value = "SELECT DISTINCT DATE(created_at) FROM quiz_records WHERE user_id = :userId ORDER BY 1 DESC", nativeQuery = true)
+    List<java.sql.Date> findDistinctStudyDatesByUserId(@Param("userId") Long userId);
 }

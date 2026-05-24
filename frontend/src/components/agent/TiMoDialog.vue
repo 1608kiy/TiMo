@@ -1,6 +1,6 @@
 <template>
   <div class="timo-dialog-overlay" @click.self="handleClose">
-    <div class="timo-dialog" :style="dialogStyle">
+    <div class="timo-dialog" :style="dialogStyle" ref="dialogRef">
       <div class="dialog-header">
         <TiMoAvatar :state="agentStore.tiMoState" size="small" />
         <div class="header-info">
@@ -118,7 +118,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch, computed, onMounted } from 'vue'
+import { ref, nextTick, watch, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useAgentStore } from '../../stores/agent'
 import { useExamPlanStore } from '../../stores/examPlan'
 import { sendChatMessage, loadChatHistory } from '../../api/agent'
@@ -135,20 +135,46 @@ const examPlanStore = useExamPlanStore()
 const userStore = useUserStore()
 const inputText = ref('')
 const messagesRef = ref(null)
+const dialogRef = ref(null)
 const dialoguing = ref(false)
 const currentOptions = ref([])
 const nicknameDialogVisible = ref(false)
 const nicknameInput = ref('')
 
+const windowWidth = ref(window.innerWidth)
+const windowHeight = ref(window.innerHeight)
+const measuredHeight = ref(0)
+
+function onWindowResize() {
+  windowWidth.value = window.innerWidth
+  windowHeight.value = window.innerHeight
+  nextTick(() => {
+    if (dialogRef.value) {
+      measuredHeight.value = dialogRef.value.getBoundingClientRect().height
+    }
+  })
+}
+
 const dialogStyle = computed(() => {
   const rect = agentStore.fabRect
-  const dialogWidth = 480
   const gap = 12
+  const margin = 16
+  const dialogWidth = Math.min(480, windowWidth.value - margin * 2)
+  const estimatedHeight = measuredHeight.value || Math.min(500, windowHeight.value * 0.7)
+
   let left = rect.x + rect.width / 2 - dialogWidth / 2
   let top = rect.y + rect.height + gap
-  if (left < 16) left = 16
-  if (left + dialogWidth > window.innerWidth - 16) left = window.innerWidth - dialogWidth - 16
-  if (top + 500 > window.innerHeight) top = rect.y - 500 - gap
+
+  if (left < margin) left = margin
+  if (left + dialogWidth > windowWidth.value - margin) {
+    left = windowWidth.value - dialogWidth - margin
+  }
+  // 若下方放不下，翻到上方；若上方也放不下，靠下边缘
+  if (top + estimatedHeight > windowHeight.value - margin) {
+    const topFlip = rect.y - estimatedHeight - gap
+    top = topFlip > margin ? topFlip : windowHeight.value - estimatedHeight - margin
+  }
+  if (top < margin) top = margin
   return { left: left + 'px', top: top + 'px', width: dialogWidth + 'px' }
 })
 
@@ -323,6 +349,7 @@ function confirmPlan() {
     role: 'assistant',
     content: '计划已确认！现在去选词页面开始你的备考之旅吧～'
   })
+  router.push('/word-select')
 }
 
 function restartExamPlan() {
@@ -416,9 +443,19 @@ function tryStartExamPlan() {
 }
 
 onMounted(() => {
+  window.addEventListener('resize', onWindowResize)
+  nextTick(() => {
+    if (dialogRef.value) {
+      measuredHeight.value = dialogRef.value.getBoundingClientRect().height
+    }
+  })
   tryStartExamPlan()
   fetchHistory()
   ensureNicknamePrompt()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', onWindowResize)
 })
 
 watch(() => agentStore.isOpen, (open) => {
@@ -434,6 +471,9 @@ watch(() => agentStore.messages.length, () => {
     if (messagesRef.value) {
       messagesRef.value.scrollTop = messagesRef.value.scrollHeight
     }
+    if (dialogRef.value) {
+      measuredHeight.value = dialogRef.value.getBoundingClientRect().height
+    }
   })
 })
 
@@ -441,6 +481,9 @@ watch(() => examPlanStore.dialogMessages.length, () => {
   nextTick(() => {
     if (messagesRef.value) {
       messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+    }
+    if (dialogRef.value) {
+      measuredHeight.value = dialogRef.value.getBoundingClientRect().height
     }
   })
 })

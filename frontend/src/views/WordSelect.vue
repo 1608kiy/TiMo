@@ -533,7 +533,9 @@ function startLearning() {
 }
 
 function goToExamPlan() {
-  router.push('/exam-plan')
+  examPlanStore.reset()
+  agentStore.setConversationType('exam_planning')
+  if (!agentStore.isOpen) agentStore.toggleDialog()
 }
 
 onMounted(() => {

@@ -15,8 +15,6 @@ import com.timo.words.modules.study.repository.QuizRecordRepository;
 import com.timo.words.modules.study.repository.UserWordBindRepository;
 import com.timo.words.modules.examplan.entity.ExamPlan;
 import com.timo.words.modules.examplan.repository.ExamPlanRepository;
-import com.timo.words.modules.calendar.repository.CheckinRecordRepository;
-import com.timo.words.modules.calendar.entity.CheckinRecord;
 import com.timo.words.modules.user.entity.User;
 import com.timo.words.modules.user.repository.UserRepository;
 import com.timo.words.modules.word.entity.Example;
@@ -49,7 +47,6 @@ public class AgentService {
     private final WordRepository wordRepository;
     private final UserWordBindRepository userWordBindRepository;
     private final QuizRecordRepository quizRecordRepository;
-    private final CheckinRecordRepository checkinRecordRepository;
     private final ConversationQuizLogRepository conversationQuizLogRepository;
     private final ExamPlanRepository examPlanRepository;
     private final ObjectMapper objectMapper;
@@ -1124,10 +1121,10 @@ public class AgentService {
 
         long studyDays = quizRecordRepository.countStudyDaysSince(userId, weekAgo);
 
-        // Calculate longest streak from all checkin records
-        List<com.timo.words.modules.calendar.entity.CheckinRecord> checkins =
-                checkinRecordRepository.findByUserIdOrderByCheckinDateDesc(userId);
-        int longestStreak = calculateStreak(checkins);
+        // Longest streak from distinct study dates (derived from quiz records)
+        List<LocalDate> studyDates = quizRecordRepository.findDistinctStudyDatesByUserId(userId)
+                .stream().map(java.sql.Date::toLocalDate).toList();
+        int longestStreak = calculateStreak(studyDates);
 
         // Build suggestions based on data
         List<String> suggestions = new ArrayList<>();
@@ -1396,15 +1393,32 @@ public class AgentService {
         }
     }
 
-    private int calculateStreak(List<com.timo.words.modules.calendar.entity.CheckinRecord> checkins) {
-        if (checkins.isEmpty()) return 0;
-        java.time.LocalDate expected = java.time.LocalDate.now();
+    private int calculateStreak(List<LocalDate> studyDates) {
+        if (studyDates == null || studyDates.isEmpty()) return 0;
+        // Defensive: sort distinct dates descending
+        List<LocalDate> sorted = studyDates.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted(Comparator.reverseOrder())
+                .toList();
+        if (sorted.isEmpty()) return 0;
+
+        LocalDate today = LocalDate.now();
+        LocalDate expected;
+        if (sorted.get(0).equals(today)) {
+            expected = today;
+        } else if (sorted.get(0).equals(today.minusDays(1))) {
+            expected = today.minusDays(1);
+        } else {
+            return 0;
+        }
+
         int streak = 0;
-        for (var c : checkins) {
-            if (c.getCheckinDate().equals(expected)) {
+        for (LocalDate d : sorted) {
+            if (d.equals(expected)) {
                 streak++;
                 expected = expected.minusDays(1);
-            } else if (c.getCheckinDate().isBefore(expected)) {
+            } else if (d.isBefore(expected)) {
                 break;
             }
         }
@@ -1735,9 +1749,10 @@ public class AgentService {
                 recentAccuracy = Math.round(correct * 1000.0 / recentRecords.size()) / 10.0;
             }
 
-            // Check-in streak
-            List<CheckinRecord> checkins = checkinRecordRepository.findByUserIdOrderByCheckinDateDesc(userId);
-            int streak = calculateStreak(checkins);
+            // Check-in streak (derived from distinct study dates)
+            List<LocalDate> studyDates = quizRecordRepository.findDistinctStudyDatesByUserId(userId)
+                    .stream().map(java.sql.Date::toLocalDate).toList();
+            int streak = calculateStreak(studyDates);
 
             sb.append(String.format(
                     "，已学单词%d个（已掌握%d个），待复习%d个，顽固词%d个，近7天正确率%.0f%%，连续打卡%d天",

@@ -10,16 +10,13 @@ const routes = [
     meta: { needAuth: true },
     children: [
       { path: '', name: 'Dashboard', meta: { title: '今日规划' } },
-      { path: 'exam-plan', name: 'ExamPlan', meta: { title: '备考规划' } },
       { path: 'word-select', name: 'WordSelect', meta: { title: '选词学习' } },
       { path: 'quick-memory', name: 'QuickMemory', meta: { title: '快速记忆' } },
       { path: 'deep-learning', name: 'DeepLearning', meta: { title: '语境深度学习' } },
       { path: 'review', name: 'ReviewMode', meta: { title: '统一复习' } },
-      { path: 'study/reverse-recall', name: 'ReverseRecall', meta: { title: '中→英召回', needAuth: true } },
       { path: 'wordbank', name: 'Wordbank', meta: { title: '词库' } },
       { path: 'stats', name: 'Stats', meta: { title: '统计' } },
-      { path: 'profile', name: 'Profile', meta: { title: '个人中心' } },
-      { path: 'calendar', name: 'Calendar', meta: { title: '学习日历' } }
+      { path: 'profile', name: 'Profile', meta: { title: '个人中心' } }
     ]
   },
   { path: '/:pathMatch(.*)*', name: 'NotFound', meta: { title: '页面不存在', needAuth: false } }
@@ -28,19 +25,16 @@ const routes = [
 describe('Router configuration', () => {
   it('has all expected routes', () => {
     const childRoutes = routes[2].children
-    expect(childRoutes).toHaveLength(11)
+    expect(childRoutes).toHaveLength(8)
     const names = childRoutes.map(r => r.name)
     expect(names).toContain('Dashboard')
-    expect(names).toContain('ExamPlan')
     expect(names).toContain('WordSelect')
     expect(names).toContain('QuickMemory')
     expect(names).toContain('DeepLearning')
     expect(names).toContain('ReviewMode')
-    expect(names).toContain('ReverseRecall')
     expect(names).toContain('Wordbank')
     expect(names).toContain('Stats')
     expect(names).toContain('Profile')
-    expect(names).toContain('Calendar')
   })
 
   it('login route does not require auth', () => {

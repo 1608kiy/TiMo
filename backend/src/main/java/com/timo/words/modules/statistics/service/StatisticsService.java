@@ -1,7 +1,5 @@
 package com.timo.words.modules.statistics.service;
 
-import com.timo.words.modules.calendar.entity.CheckinRecord;
-import com.timo.words.modules.calendar.repository.CheckinRecordRepository;
 import com.timo.words.modules.study.entity.QuizRecord;
 import com.timo.words.modules.study.entity.UserWordBind;
 import com.timo.words.modules.study.repository.QuizRecordRepository;
@@ -15,7 +13,6 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -25,7 +22,6 @@ public class StatisticsService {
 
     private final QuizRecordRepository quizRecordRepository;
     private final UserWordBindRepository userWordBindRepository;
-    private final CheckinRecordRepository checkinRecordRepository;
     private final WordRepository wordRepository;
 
     // --- DTOs ---
@@ -102,12 +98,11 @@ public class StatisticsService {
         // Grade 1.0~4.0 → percentage: (avg-1)/3 * 100
         dto.setAvgAccuracy(avg != null ? Math.round((avg - 1.0) / 3.0 * 1000) / 10.0 : 0);
 
-        // Study days from checkin records
-        List<CheckinRecord> checkins = checkinRecordRepository.findByUserIdOrderByCheckinDateDesc(userId);
-        dto.setStudyDays(checkins.size());
-
-        // Current streak
-        dto.setCurrentStreak(calculateStreak(checkins));
+        // Study days + current streak derived from distinct quiz-record dates
+        List<LocalDate> studyDates = quizRecordRepository.findDistinctStudyDatesByUserId(userId)
+                .stream().map(java.sql.Date::toLocalDate).toList();
+        dto.setStudyDays(studyDates.size());
+        dto.setCurrentStreak(calculateStreak(studyDates));
 
         return dto;
     }
@@ -186,14 +181,20 @@ public class StatisticsService {
     }
 
     public HeatmapDTO getHeatmap(Long userId) {
-        List<CheckinRecord> checkins = checkinRecordRepository.findByUserIdOrderByCheckinDateDesc(userId);
-        int maxCount = checkins.stream()
-                .mapToInt(c -> c.getWordsStudied() != null ? c.getWordsStudied() : 0)
-                .max().orElse(1);
+        // Derive heatmap from quiz records: count per day = number of records that day.
+        LocalDate today = LocalDate.now();
+        LocalDateTime since = today.minusDays(365).atStartOfDay();
+        List<QuizRecord> records = quizRecordRepository.findByUserIdAndCreatedAtBetween(
+                userId, since, today.atTime(LocalTime.MAX));
+        Map<LocalDate, Long> countsByDay = records.stream()
+                .filter(r -> r.getCreatedAt() != null)
+                .collect(Collectors.groupingBy(r -> r.getCreatedAt().toLocalDate(), Collectors.counting()));
 
-        List<Object[]> data = checkins.stream()
-                .map(c -> new Object[]{c.getCheckinDate().toString(), c.getWordsStudied() != null ? c.getWordsStudied() : 0})
+        List<Object[]> data = countsByDay.entrySet().stream()
+                .sorted(Map.Entry.<LocalDate, Long>comparingByKey().reversed())
+                .map(e -> new Object[]{e.getKey().toString(), e.getValue().intValue()})
                 .collect(Collectors.toList());
+        int maxCount = countsByDay.values().stream().mapToInt(Long::intValue).max().orElse(1);
 
         HeatmapDTO dto = new HeatmapDTO();
         dto.setData(data);
@@ -278,19 +279,34 @@ public class StatisticsService {
 
     // --- Helpers ---
 
-    private int calculateStreak(List<CheckinRecord> checkins) {
-        if (checkins.isEmpty()) return 0;
-        int streak = 1;
+    private int calculateStreak(List<LocalDate> studyDates) {
+        if (studyDates == null || studyDates.isEmpty()) return 0;
+        List<LocalDate> sorted = studyDates.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted(Comparator.reverseOrder())
+                .toList();
+        if (sorted.isEmpty()) return 0;
+
         LocalDate today = LocalDate.now();
-        LocalDate expected = today;
-        for (CheckinRecord c : checkins) {
-            if (c.getCheckinDate().equals(expected)) {
+        LocalDate expected;
+        if (sorted.get(0).equals(today)) {
+            expected = today;
+        } else if (sorted.get(0).equals(today.minusDays(1))) {
+            expected = today.minusDays(1);
+        } else {
+            return 0;
+        }
+
+        int streak = 0;
+        for (LocalDate d : sorted) {
+            if (d.equals(expected)) {
                 streak++;
                 expected = expected.minusDays(1);
-            } else if (c.getCheckinDate().isBefore(expected)) {
+            } else if (d.isBefore(expected)) {
                 break;
             }
         }
-        return Math.max(0, streak - 1);
+        return streak;
     }
 }

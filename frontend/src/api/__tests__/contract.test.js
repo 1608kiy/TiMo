@@ -47,16 +47,6 @@ describe('API Contract: Frontend ↔ Backend endpoint alignment', () => {
       expect(submitContextDeepGroup).toBeTypeOf('function')
     })
 
-    it('submitReverseRecall uses POST /study/submit-reverse-recall', async () => {
-      const { submitReverseRecall } = await import('../study')
-      expect(submitReverseRecall).toBeTypeOf('function')
-    })
-
-    it('getReverseRecallCandidates uses GET /study/reverse-recall/candidates', async () => {
-      const { getReverseRecallCandidates } = await import('../study')
-      expect(getReverseRecallCandidates).toBeTypeOf('function')
-    })
-
   })
 
   describe('Words API (/api/words/**)', () => {
@@ -141,10 +131,6 @@ describe('API Contract: Frontend ↔ Backend endpoint alignment', () => {
       expect(getMonthly).toBeTypeOf('function')
     })
 
-    it('checkin uses POST /calendar/checkin', async () => {
-      const { checkin } = await import('../calendar')
-      expect(checkin).toBeTypeOf('function')
-    })
   })
 
   describe('User API (/api/user/**)', () => {

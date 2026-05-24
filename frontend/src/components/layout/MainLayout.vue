@@ -9,13 +9,12 @@
     <Navbar data-onboard="navbar" />
     <main class="main-content" data-onboard="content">
       <router-view v-slot="{ Component }">
-        <keep-alive :include="cachedPages">
-          <transition name="page" mode="out-in">
-            <component :is="Component" />
-          </transition>
-        </keep-alive>
+        <transition name="page" mode="out-in" appear>
+          <component :is="Component" />
+        </transition>
       </router-view>
     </main>
+    <TiMoFAB v-if="showGlobalFab" class="global-fab" />
     <TiMoDialog v-if="agentStore.isOpen" />
     <OnboardingOverlay />
     <OfflineSnackbar />
@@ -23,20 +22,29 @@
 </template>
 
 <script setup>
-import { onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { onMounted, onBeforeUnmount, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAgentStore } from '../../stores/agent'
 import { useAdminStore } from '../../stores/admin'
 import { exitImpersonate } from '../../api/admin'
 import Navbar from './Navbar.vue'
+import TiMoFAB from '../agent/TiMoFAB.vue'
 import TiMoDialog from '../agent/TiMoDialog.vue'
 import OnboardingOverlay from '../common/OnboardingOverlay.vue'
 import OfflineSnackbar from '../OfflineSnackbar.vue'
 import emitter from '../../events'
 
 const router = useRouter()
+const route = useRoute()
 const agentStore = useAgentStore()
 const adminStore = useAdminStore()
+
+const showGlobalFab = computed(() => {
+  const p = route.path
+  if (p === '/' || p === '/login' || p === '/forgot-password') return false
+  if (p.startsWith('/admin')) return false
+  return true
+})
 
 async function handleExitImpersonate() {
   try {
@@ -50,8 +58,6 @@ async function handleExitImpersonate() {
   }
   router.push('/admin')
 }
-const cachedPages = ['Wordbank', 'Stats', 'Profile', 'Calendar']
-
 let offStart, offSuccess, offMeltdown
 
 onMounted(() => {
@@ -119,5 +125,30 @@ onBeforeUnmount(() => {
 
 .has-banner .main-content {
   padding-top: calc(var(--navbar-height) + var(--content-padding) + 40px);
+}
+
+.global-fab {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 50;
+  background: #fff;
+  padding: 8px 14px;
+  border: 2px solid var(--color-border-lighter);
+  border-radius: var(--radius-full);
+  box-shadow: 0 4px 0 var(--color-border-lighter);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.global-fab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 0 var(--color-border-lighter);
+}
+
+@media (max-width: 768px) {
+  .global-fab {
+    right: 16px;
+    bottom: 16px;
+  }
 }
 </style>

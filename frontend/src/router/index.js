@@ -30,12 +30,6 @@ const routes = [
         redirect: '/'
       },
       {
-        path: 'exam-plan',
-        name: 'ExamPlan',
-        component: () => import('../views/ExamPlan.vue'),
-        meta: { title: '备考规划' }
-      },
-      {
         path: 'word-select',
         name: 'WordSelect',
         component: () => import('../views/WordSelect.vue'),
@@ -60,12 +54,6 @@ const routes = [
         meta: { title: '统一复习' }
       },
       {
-        path: 'study/reverse-recall',
-        name: 'ReverseRecall',
-        component: () => import('../views/ReverseRecall.vue'),
-        meta: { title: '中→英召回', needAuth: true }
-      },
-      {
         path: 'wordbank',
         name: 'Wordbank',
         component: () => import('../views/Wordbank.vue'),
@@ -82,12 +70,6 @@ const routes = [
         name: 'Profile',
         component: () => import('../views/Profile.vue'),
         meta: { title: '个人中心' }
-      },
-      {
-        path: 'calendar',
-        name: 'Calendar',
-        component: () => import('../views/Calendar.vue'),
-        meta: { title: '学习日历' }
       }
     ]
   },

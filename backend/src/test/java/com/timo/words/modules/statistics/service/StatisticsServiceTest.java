@@ -1,7 +1,5 @@
 package com.timo.words.modules.statistics.service;
 
-import com.timo.words.modules.calendar.entity.CheckinRecord;
-import com.timo.words.modules.calendar.repository.CheckinRecordRepository;
 import com.timo.words.modules.study.entity.QuizRecord;
 import com.timo.words.modules.study.entity.UserWordBind;
 import com.timo.words.modules.study.repository.QuizRecordRepository;
@@ -13,7 +11,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
@@ -27,7 +24,6 @@ class StatisticsServiceTest {
 
     @Mock private QuizRecordRepository quizRecordRepository;
     @Mock private UserWordBindRepository userWordBindRepository;
-    @Mock private CheckinRecordRepository checkinRecordRepository;
     @Mock private WordRepository wordRepository;
     @InjectMocks private StatisticsService statisticsService;
 
@@ -36,7 +32,7 @@ class StatisticsServiceTest {
         when(userWordBindRepository.findByUserId(1L)).thenReturn(Collections.emptyList());
         when(quizRecordRepository.countByUserId(1L)).thenReturn(0L);
         when(quizRecordRepository.avgGradeByUserId(1L)).thenReturn(null);
-        when(checkinRecordRepository.findByUserIdOrderByCheckinDateDesc(1L)).thenReturn(Collections.emptyList());
+        when(quizRecordRepository.findDistinctStudyDatesByUserId(1L)).thenReturn(Collections.emptyList());
 
         StatisticsService.OverviewDTO overview = statisticsService.getOverview(1L);
 
@@ -50,8 +46,6 @@ class StatisticsServiceTest {
 
     @Test
     void getOverview_withData() {
-        // Mastered now driven by masteredAt timestamp (set by StudyService.updateMasteredStatus)
-        // instead of the legacy stability >= 1.2 check.
         UserWordBind mastered = new UserWordBind();
         mastered.setStability(40.0);
         mastered.setMasteredAt(LocalDateTime.now().minusDays(1));
@@ -61,7 +55,7 @@ class StatisticsServiceTest {
         when(userWordBindRepository.findByUserId(1L)).thenReturn(List.of(mastered, learning));
         when(quizRecordRepository.countByUserId(1L)).thenReturn(100L);
         when(quizRecordRepository.avgGradeByUserId(1L)).thenReturn(3.0);
-        when(checkinRecordRepository.findByUserIdOrderByCheckinDateDesc(1L))
+        when(quizRecordRepository.findDistinctStudyDatesByUserId(1L))
                 .thenReturn(Collections.emptyList());
 
         StatisticsService.OverviewDTO overview = statisticsService.getOverview(1L);
@@ -69,7 +63,6 @@ class StatisticsServiceTest {
         assertEquals(2, overview.getTotalWordsStudied());
         assertEquals(1, overview.getMasteredWords());
         assertEquals(100, overview.getTotalRecords());
-        // avg accuracy = (3.0 - 1.0) / 3.0 * 100 = 66.7
         assertEquals(66.7, overview.getAvgAccuracy(), 0.1);
     }
 
@@ -99,13 +92,12 @@ class StatisticsServiceTest {
         StatisticsService.RetentionDTO retention = statisticsService.getRetention(1L, 1);
 
         assertEquals(1, retention.getDates().size());
-        // 2/3 = 66.7%
         assertEquals(66.7, retention.getRetentionRates().get(0), 0.1);
     }
 
     @Test
     void getHeatmap_empty() {
-        when(checkinRecordRepository.findByUserIdOrderByCheckinDateDesc(1L))
+        when(quizRecordRepository.findByUserIdAndCreatedAtBetween(eq(1L), any(), any()))
                 .thenReturn(Collections.emptyList());
 
         StatisticsService.HeatmapDTO heatmap = statisticsService.getHeatmap(1L);
@@ -157,7 +149,7 @@ class StatisticsServiceTest {
 
         StatisticsService.ForgettingCurveDTO curve = statisticsService.getForgettingCurve(1L, 7);
 
-        assertEquals(8, curve.getDays().size()); // D+0 to D+7
+        assertEquals(8, curve.getDays().size());
         assertEquals(8, curve.getExpectedR().size());
         assertEquals(8, curve.getActualR().size());
     }

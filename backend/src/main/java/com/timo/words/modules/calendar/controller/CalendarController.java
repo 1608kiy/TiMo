@@ -1,9 +1,7 @@
 package com.timo.words.modules.calendar.controller;
 
 import com.timo.words.common.Result;
-import com.timo.words.modules.calendar.entity.CheckinRecord;
 import com.timo.words.modules.calendar.service.CalendarService;
-import com.timo.words.modules.calendar.service.CalendarService.CheckinRequest;
 import com.timo.words.modules.calendar.service.CalendarService.MonthlyDTO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -19,7 +17,7 @@ public class CalendarController {
 
     private final CalendarService calendarService;
 
-    @Operation(summary = "月度打卡数据")
+    @Operation(summary = "月度学习数据")
     @GetMapping("/monthly")
     public Result<MonthlyDTO> getMonthly(
             @RequestParam int year,
@@ -32,14 +30,5 @@ public class CalendarController {
             return Result.error("年份不合法");
         }
         return Result.success(calendarService.getMonthly((Long) auth.getPrincipal(), year, month));
-    }
-
-    @Operation(summary = "打卡")
-    @PostMapping("/checkin")
-    public Result<CheckinRecord> checkin(
-            @RequestBody(required = false) CheckinRequest request,
-            Authentication auth) {
-        CheckinRequest req = request != null ? request : new CheckinRequest();
-        return Result.success(calendarService.checkin((Long) auth.getPrincipal(), req));
     }
 }

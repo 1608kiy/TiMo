@@ -1,6 +1,37 @@
 <template>
-  <div class="dashboard" v-loading="loading && !loadError">
+  <div class="dashboard">
     <ErrorState v-if="loadError" @retry="loadDashboard" />
+    <!-- Skeleton State -->
+    <template v-else-if="loading">
+      <div class="greeting-section">
+        <div class="greeting-row">
+          <div class="greeting-text" style="flex:1;">
+            <div class="skeleton-block skeleton-greeting-title"></div>
+            <div class="skeleton-block skeleton-greeting-date"></div>
+          </div>
+          <div class="skeleton-block skeleton-greeting-fab"></div>
+        </div>
+      </div>
+      <div class="skeleton-card">
+        <div class="skeleton-row-between">
+          <div class="skeleton-block skeleton-title"></div>
+          <div class="skeleton-block skeleton-meta"></div>
+        </div>
+        <div class="skeleton-block skeleton-progress"></div>
+      </div>
+      <div class="skeleton-card skeleton-stats-grid">
+        <div v-for="i in 4" :key="i" class="skeleton-stat">
+          <div class="skeleton-block skeleton-stat-val"></div>
+          <div class="skeleton-block skeleton-stat-lbl"></div>
+        </div>
+      </div>
+      <div class="skeleton-section">
+        <div class="skeleton-block skeleton-section-label"></div>
+        <div class="skeleton-mode-list">
+          <div v-for="i in 4" :key="i" class="skeleton-block skeleton-mode-item"></div>
+        </div>
+      </div>
+    </template>
     <template v-else>
     <!-- Greeting -->
     <div class="greeting-section fade-in-up">
@@ -8,9 +39,9 @@
         <div class="greeting-text">
           <h1>{{ greeting }}，{{ userStore.userInfo?.nickname || '学习者' }}</h1>
           <p class="greeting-date">{{ todayStr }}</p>
-          <div class="streak-inline" v-if="stats.consecutiveCheckins > 0">
+          <div class="streak-inline" v-if="stats.currentStreak > 0">
             <span class="streak-dot"></span>
-            <span class="streak-text">连续 {{ stats.consecutiveCheckins }} 天</span>
+            <span class="streak-text">连续 {{ stats.currentStreak }} 天</span>
           </div>
         </div>
         <div class="timo-greeting">
@@ -257,11 +288,6 @@
           <span class="mode-dialog-name">统一复习</span>
           <span class="mode-dialog-desc">智能检测</span>
         </button>
-        <button class="mode-dialog-btn" :class="{ active: selectedGlobalMode === 'reverse_recall' }" @click="selectedGlobalMode = 'reverse_recall'">
-          <span class="mode-emoji">&#x270D;&#xFE0F;</span>
-          <span class="mode-dialog-name">中→英召回</span>
-          <span class="mode-dialog-desc">主动召回</span>
-        </button>
       </div>
       <template #footer>
         <el-button @click="showModeDialog = false">取消</el-button>
@@ -390,13 +416,6 @@ const modes = [
     desc: '智能检测，精准复习',
     route: '/review',
     icon: '<path d="M21 12a9 9 0 11-6.22-8.56"/><path d="M21 3v6h-6"/>'
-  },
-  {
-    name: '中→英召回',
-    desc: '主动召回，从释义反向写词',
-    route: '/study/reverse-recall',
-    icon: '<path d="M4 12h14M12 4l8 8-8 8"/><path d="M9 18l-5-6 5-6"/>',
-    accent: 'reverse'
   }
 ]
 
@@ -404,7 +423,7 @@ const stats = ref({
   masteredWords: 0,
   pendingReview: 0,
   avgAccuracy: 0,
-  consecutiveCheckins: 0
+  currentStreak: 0
 })
 
 const animatedStats = reactive({
@@ -446,7 +465,6 @@ function smartModeLabel(mode) {
     case 'quick_memory': return '快速记忆'
     case 'context_deep': return '语境深度'
     case 'unified_review': return '统一复习'
-    case 'reverse_recall': return '中→英召回'
     default: return mode
   }
 }
@@ -497,8 +515,6 @@ function confirmStart() {
   showModeDialog.value = false
   if (selectedGlobalMode.value === 'unified_review') {
     router.push('/review')
-  } else if (selectedGlobalMode.value === 'reverse_recall') {
-    router.push('/study/reverse-recall')
   } else {
     router.push({
       path: '/word-select',
@@ -576,14 +592,14 @@ async function loadDashboard() {
         masteredWords: d.masteredWords ?? 0,
         pendingReview: d.pendingReview ?? 0,
         avgAccuracy: d.avgAccuracy ?? 0,
-        consecutiveCheckins: d.consecutiveCheckins ?? 0
+        currentStreak: d.currentStreak ?? 0
       }
       setTimeout(() => {
         if (!alive) return
         animateNumber('mastered', stats.value.masteredWords)
         animateNumber('review', stats.value.pendingReview)
         animateNumber('accuracy', stats.value.avgAccuracy, '%')
-        animateNumber('streak', stats.value.consecutiveCheckins)
+        animateNumber('streak', stats.value.currentStreak)
       }, 400)
     }
     if (nearForgottenRes.status === 'fulfilled') {
@@ -664,6 +680,39 @@ onMounted(async () => {
   flex-direction: column;
   gap: 24px;
   padding-bottom: 64px;
+}
+
+/* === Skeleton (loading state) === */
+.skeleton-block {
+  background: linear-gradient(90deg, var(--color-bg-hover) 25%, var(--color-border-lighter) 50%, var(--color-bg-hover) 75%);
+  background-size: 200% 100%;
+  border-radius: var(--radius-sm);
+  animation: shimmer 1.5s infinite;
+}
+.skeleton-greeting-title { height: 28px; width: 60%; margin-bottom: 8px; border-radius: var(--radius-sm); }
+.skeleton-greeting-date { height: 14px; width: 30%; border-radius: var(--radius-sm); }
+.skeleton-greeting-fab { width: 56px; height: 40px; border-radius: var(--radius-md); flex-shrink: 0; }
+.skeleton-card {
+  background: #fff;
+  border: 2px solid var(--color-border-lighter);
+  border-radius: var(--radius-md);
+  padding: 20px 24px;
+  box-shadow: var(--shadow-stack-md);
+}
+.skeleton-row-between { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.skeleton-title { height: 14px; width: 80px; }
+.skeleton-meta { height: 12px; width: 100px; }
+.skeleton-progress { height: 4px; width: 100%; border-radius: 2px; }
+.skeleton-stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; padding: 28px 20px; }
+.skeleton-stat { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.skeleton-stat-val { height: 26px; width: 50%; }
+.skeleton-stat-lbl { height: 12px; width: 40%; }
+.skeleton-section { display: flex; flex-direction: column; gap: 12px; }
+.skeleton-section-label { height: 11px; width: 80px; }
+.skeleton-mode-list { display: flex; flex-direction: column; gap: 8px; }
+.skeleton-mode-item { height: 68px; border-radius: var(--radius-md); }
+@media (max-width: 768px) {
+  .skeleton-stats-grid { grid-template-columns: 1fr 1fr; gap: 16px 0; padding: 20px 12px; }
 }
 
 /* === Greeting === */
@@ -972,8 +1021,8 @@ onMounted(async () => {
 
 /* === Mode List === */
 .mode-list { display: flex; flex-direction: column; gap: 8px; }
-.mode-item { display: flex; align-items: center; gap: 14px; padding: 16px 20px; background: #fff; border: 2px solid var(--color-border-lighter); border-radius: var(--radius-md); cursor: pointer; transition: background 0.25s ease, padding-left 0.25s ease, box-shadow 0.25s ease; animation: fadeInUp 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; opacity: 0; box-shadow: 0 3px 0 var(--color-border-lighter); }
-.mode-item:hover { background: var(--color-bg-hover); padding-left: 24px; box-shadow: 0 5px 0 var(--color-border-lighter); }
+.mode-item { display: flex; align-items: center; gap: 14px; padding: 16px 20px; background: #fff; border: 2px solid var(--color-border-lighter); border-radius: var(--radius-md); cursor: pointer; transition: background 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease; animation: fadeInUp 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; opacity: 0; box-shadow: 0 3px 0 var(--color-border-lighter); }
+.mode-item:hover { background: var(--color-bg-hover); transform: translateX(4px); box-shadow: 0 5px 0 var(--color-border-lighter); }
 .mode-icon { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; color: var(--color-primary); flex-shrink: 0; transition: transform 0.25s ease; }
 .mode-item:hover .mode-icon { transform: scale(1.08); }
 .mode-body { flex: 1; }
@@ -981,11 +1030,6 @@ onMounted(async () => {
 .mode-desc { font-size: 12px; color: var(--color-text-secondary); font-weight: 600; }
 .mode-arrow { color: var(--color-text-muted); flex-shrink: 0; opacity: 0; transform: translateX(-4px); transition: opacity 0.25s ease, transform 0.25s ease; }
 .mode-item:hover .mode-arrow { opacity: 1; transform: translateX(0); }
-
-/* Reverse-recall accent — distinct teal/purple so the 4th mode is visually separable */
-.mode-accent-reverse { border-color: #c7d2e8; box-shadow: 0 3px 0 #c7d2e8; }
-.mode-accent-reverse .mode-icon { color: #6b6dd9; }
-.mode-accent-reverse:hover { box-shadow: 0 5px 0 #b6c1d8; }
 
 /* === Suggestion === */
 .suggestion-label { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 800; color: var(--color-text-regular); }
@@ -1028,9 +1072,14 @@ onMounted(async () => {
 .mode-dialog-desc { font-size: 11px; font-weight: 600; color: var(--color-text-muted); }
 
 @media (max-width: 768px) {
-  .stats-grid { flex-wrap: wrap; }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px 0;
+    padding: 20px 12px;
+  }
   .stat-divider { display: none; }
-  .stat-item { width: 50%; margin-bottom: 16px; }
+  .stat-item { width: auto; margin-bottom: 0; }
   .suggestion-body { flex-direction: column; gap: 16px; align-items: stretch; }
   .suggestion-stats { justify-content: center; }
   .greeting-row { flex-direction: column; gap: 12px; }
